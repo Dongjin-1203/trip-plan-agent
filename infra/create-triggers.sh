@@ -15,11 +15,14 @@ REPO="projects/${PROJECT_ID}/locations/${REGION}/connections/${CONNECTION}/repos
 command -v gcloud >/dev/null 2>&1 || { echo "gcloud를 찾을 수 없어요."; exit 1; }
 
 echo "== 연결된 저장소 확인"
-if ! gcloud builds repositories list --connection "$CONNECTION" --region "$REGION" --project "$PROJECT_ID" \
-     --format='value(name)' 2>/dev/null | grep -q "/repositories/${REPO_RESOURCE}\$"; then
-  echo "연결 '${CONNECTION}'에서 저장소 '${REPO_RESOURCE}'를 찾지 못했어요. 지금 연결된 저장소:"
+# gcloud는 저장소 이름만(또는 전체 경로로) 돌려주고, Windows에서는 줄 끝에 \r이 붙는다. 둘 다 정리해서 이름만 비교한다.
+list_repos() {
   gcloud builds repositories list --connection "$CONNECTION" --region "$REGION" --project "$PROJECT_ID" \
-    --format='value(name)' 2>&1 | sed 's|.*/repositories/|   - |' || true
+    --format='value(name)' 2>/dev/null | tr -d '\r' | sed 's|.*/||'
+}
+if ! list_repos | grep -qx "$REPO_RESOURCE"; then
+  echo "연결 '${CONNECTION}'에서 저장소 '${REPO_RESOURCE}'를 찾지 못했어요. 지금 연결된 저장소:"
+  list_repos | sed 's|^|   - |' || true
   echo "REPO_RESOURCE=<위 이름> bash infra/create-triggers.sh 로 다시 실행하세요."
   exit 1
 fi

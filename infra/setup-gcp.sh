@@ -125,7 +125,7 @@ if has_version DATABASE_URL; then
 else
   # 비밀번호는 무작위로 만들어 바로 시크릿에 저장하고, 화면에는 출력하지 않는다. (16진수라 URL에 안전)
   DB_PASSWORD="$(openssl rand -hex 24)"
-  if gcloud sql users list --instance "$DB_INSTANCE" --format='value(name)' | grep -qx "$DB_USER"; then
+  if gcloud sql users list --instance "$DB_INSTANCE" --format='value(name)' | tr -d '\r' | grep -qx "$DB_USER"; then
     gcloud sql users set-password "$DB_USER" --instance "$DB_INSTANCE" --password "$DB_PASSWORD" >/dev/null
   else
     gcloud sql users create "$DB_USER" --instance "$DB_INSTANCE" --password "$DB_PASSWORD" >/dev/null
