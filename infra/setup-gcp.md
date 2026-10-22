@@ -69,7 +69,8 @@ https://console.cloud.google.com/cloud-build/builds;region=asia-northeast3?proje
 gcloud run services describe travel-web --region asia-northeast3 --format="value(status.url)"
 
 # 백엔드는 비공개이므로 인증 없이 부르면 403이어야 합니다
-curl -s -o /dev/null -w "%{http_code}\n" "$(gcloud run services describe travel-api --region asia-northeast3 --format='value(status.url)')/healthz"
+# (참고: /healthz 는 Cloud Run이 가로채는 경로라 404가 나오니 /readyz 로 확인합니다)
+curl -s -o /dev/null -w "%{http_code}\n" "$(gcloud run services describe travel-api --region asia-northeast3 --format='value(status.url)')/readyz"
 ```
 - 웹 주소를 브라우저로 열어 **장소 → 날씨 → 초안 → 맛집 폼** 순서로 써 보세요.
 - 시크릿 창(다른 쿠키)에서 열었을 때 **이전 대화가 보이지 않아야** 합니다.
