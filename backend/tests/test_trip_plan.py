@@ -17,31 +17,46 @@ FULL = {"destination": "제주", "start_date": START, "nights": 2, "adults": 2, 
 
 # ── 조건 저장·검증 (모델 없음) ──
 def test_update_merges_and_reports_missing():
-    trip, errors = trip_plan.update(None, {"destination": "제주", "adults": 2})
+    trip, errors, _ = trip_plan.update(None, {"destination": "제주", "adults": 2})
     assert errors == [] and trip["stage"] == "intake"
     assert trip_plan.missing(trip) == ["출발일", "몇 박인지", "숙소 조회가 필요한지"]
-    trip, _ = trip_plan.update(trip, {"start_date": START, "nights": 2, "need_stay": False})
+    trip, _, _ = trip_plan.update(trip, {"start_date": START, "nights": 2, "need_stay": False})
     assert trip_plan.complete(trip)
 
 
 def test_invalid_values_are_rejected_not_saved():
-    trip, errors = trip_plan.update(None, {"start_date": "2020-01-01", "nights": 99, "adults": 0, "need_stay": "yes", "destination": "  "})
+    trip, errors, _ = trip_plan.update(None, {"start_date": "13월 45일", "nights": 99, "adults": 0, "need_stay": "yes", "destination": "  "})
     assert len(errors) == 4 and trip == {"stage": "intake"}
-    _, errors = trip_plan.update(None, {"start_date": "다음 주 토요일"})
+    _, errors, _ = trip_plan.update(None, {"start_date": "언젠가"})
     assert errors
 
 
+def test_stale_year_in_start_date_is_corrected_with_a_note():
+    """모델이 '2023-10-24'처럼 지난 해를 넣으면 올해 기준으로 바로잡고, 모델에게 알리며, 요약에서 사용자가 확인한다."""
+    stale = str(int(START[:4]) - 3) + START[4:]
+    trip, errors, notes = trip_plan.update(None, {"start_date": stale})
+    assert errors == [] and trip["start_date"] == START
+    assert notes and START in notes[0]
+    full, _, _ = trip_plan.update(None, {**FULL, "start_date": stale})
+    assert START in trip_plan.summary(full)
+
+
+def test_month_day_and_relative_start_dates_are_resolved():
+    trip, errors, notes = trip_plan.update(None, {"start_date": "다음 주 토요일"})
+    assert errors == [] and trip["start_date"] > weather.now_kst().date().isoformat() and notes == []
+
+
 def test_changing_a_condition_reopens_confirmation():
-    trip, _ = trip_plan.update(None, FULL)
+    trip, _, _ = trip_plan.update(None, FULL)
     trip["stage"] = "done"
-    same, _ = trip_plan.update(trip, {"destination": "제주"})
+    same, _, _ = trip_plan.update(trip, {"destination": "제주"})
     assert same["stage"] == "done"  # 같은 값을 다시 말해도 바뀌지 않는다
-    changed, _ = trip_plan.update(trip, {"nights": 3})
+    changed, _, _ = trip_plan.update(trip, {"nights": 3})
     assert changed["stage"] == "intake"
 
 
 def test_summary_has_dates_and_question():
-    trip, _ = trip_plan.update(None, {**FULL, "children": 1, "budget": "1인 30만원"})
+    trip, _, _ = trip_plan.update(None, {**FULL, "children": 1, "budget": "1인 30만원"})
     text = trip_plan.summary(trip)
     assert "2박 3일" in text and "성인 2명, 아동 1명" in text and "1인 30만원" in text and "작성**할까요" in text
     assert trip_plan.check_out(trip) > START
@@ -102,7 +117,7 @@ def test_consent_composes_plan_with_wider_limits_and_no_draft_card(llm, monkeypa
     monkeypatch.setattr(tools, "_search", lambda region, category: [{"name": "협재해수욕장", "address": "제주", "map_link": "http://place.map.kakao.com/1", "x": "126.2", "y": "33.3"}])
     monkeypatch.setattr(weather, "forecast", lambda region, date: {"status": "ok", "source": "t", "queried_at": "q", "region": region, "date": START, "weekday": "토", "temp_max": 18.0, "temp_min": 10.0, "precip_prob": 10, "units": {}})
     monkeypatch.setattr(stays, "search_stays", lambda *a, **k: {"stays": [{"gid": 7, "name": "바다호텔", "booking_link": "https://accommodation.myrealtrip.com/union/products/7?x=1"}], "source": "s", "queried_at": "q", "params": {}})
-    trip, _ = trip_plan.update(None, FULL)
+    trip, _, _ = trip_plan.update(None, FULL)
     trip["stage"] = "confirm"
     llm.script = [
         ("tool", "confirm_trip_plan", {}),
@@ -121,7 +136,7 @@ def test_consent_composes_plan_with_wider_limits_and_no_draft_card(llm, monkeypa
 
 def test_plan_with_unlisted_link_is_flagged(llm, monkeypatch):
     monkeypatch.setattr(tools, "_search", lambda region, category: [{"name": "a", "address": "b", "map_link": "http://place.map.kakao.com/1", "x": "1", "y": "2"}])
-    trip, _ = trip_plan.update(None, FULL)
+    trip, _, _ = trip_plan.update(None, FULL)
     trip["stage"] = "confirm"
     llm.script = [("tool", "confirm_trip_plan", {}), ("tool", "search_places", {"region": "제주", "category": "관광지"}), ("text", "http://place.map.kakao.com/999")]
     _, final = run("네", {"trip": trip}, offer_pending="plan")

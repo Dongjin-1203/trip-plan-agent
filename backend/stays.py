@@ -8,7 +8,7 @@ import requests
 from langchain_core.tools import tool
 from langsmith import traceable
 
-from weather import now_kst
+from weather import now_kst, resolve_future
 
 MCP_URL = "https://mcp-servers.myrealtrip.com/mcp"
 SOURCE = "마이리얼트립 MCP (searchStays)"
@@ -43,18 +43,23 @@ def _rpc(method: str, params: dict) -> dict:
     return data["result"]
 
 
-def _validate_dates(check_in: str, check_out: str) -> tuple[date, date]:
-    try:
-        d_in, d_out = date.fromisoformat(check_in), date.fromisoformat(check_out)
-    except (TypeError, ValueError):
-        raise StaySearchError("날짜는 YYYY-MM-DD 형식이어야 합니다.") from None
+def _validate_dates(check_in: str, check_out: str) -> tuple[str, str, str | None]:
+    """날짜를 해석·검증해 (체크인, 체크아웃, 보정 안내)를 돌려준다. 연도가 지난 해로 온 날짜는 올해 기준으로 바로잡는다."""
+    d_in, fixed_in = resolve_future(check_in)
+    d_out, fixed_out = resolve_future(check_out, floor=d_in, after=True) if d_in else (None, False)
+    if d_in is None or d_out is None:
+        raise StaySearchError("날짜를 해석할 수 없습니다. YYYY-MM-DD 형식이나 '10월 24일'처럼 알려 달라고 해야 합니다.")
     if d_in < now_kst().date():
         raise StaySearchError("체크인 날짜가 오늘보다 앞섭니다. 날짜를 확인하세요.")
     if d_out <= d_in:
         raise StaySearchError("체크아웃은 체크인보다 뒤여야 합니다.")
     if (d_out - d_in).days > MAX_NIGHTS:
         raise StaySearchError(f"최대 {MAX_NIGHTS}박까지 조회할 수 있습니다.")
-    return d_in, d_out
+    note = (
+        f"요청한 날짜의 연도가 지난 해라 {d_in.isoformat()} ~ {d_out.isoformat()}로 해석했다. 사용자에게 이 날짜가 맞는지 알린다."
+        if fixed_in or fixed_out else None
+    )
+    return d_in.isoformat(), d_out.isoformat(), note
 
 
 def booking_link(gid: int, check_in: str, check_out: str, adults: int, children: int) -> str:
@@ -87,7 +92,7 @@ def search_stays(keyword: str, check_in: str, check_out: str, adults: int = 2, c
     keyword = (keyword or "").strip()
     if not keyword:
         raise StaySearchError("검색할 지역이나 숙소 이름이 필요합니다.")
-    _validate_dates(check_in, check_out)
+    check_in, check_out, date_note = _validate_dates(check_in, check_out)
     adults, children = max(1, min(int(adults), 20)), max(0, min(int(children), 20))
     result = _rpc("tools/call", {"name": "searchStays", "arguments": {
         "keyword": keyword, "checkIn": check_in, "checkOut": check_out,
@@ -98,7 +103,7 @@ def search_stays(keyword: str, check_in: str, check_out: str, adults: int = 2, c
         raise StaySearchError("숙소 조회 결과를 읽지 못했습니다.")
     stays = [s for s in (_normalize(i, check_in, check_out, adults, children) for i in items if isinstance(i, dict)) if s][:MAX_STAYS]
     return {
-        "stays": stays, "source": SOURCE, "queried_at": now_kst().isoformat(timespec="seconds"),
+        "stays": stays, "date_note": date_note, "source": SOURCE, "queried_at": now_kst().isoformat(timespec="seconds"),
         "params": {"keyword": keyword, "check_in": check_in, "check_out": check_out, "adults": adults, "children": children, "domestic": bool(domestic)},
     }
 
@@ -106,7 +111,7 @@ def search_stays(keyword: str, check_in: str, check_out: str, adults: int = 2, c
 @tool
 def find_stays(keyword: str, check_in: str, check_out: str, adults: int = 2, children: int = 0, domestic: bool = True) -> dict:
     """호텔·리조트·펜션 등 숙소를 마이리얼트립에서 조회한다. 반환: 숙소명(name), 설명(description), 1박 가격(price), 평점(rating), 예약 링크(booking_link).
-    keyword: 지역 또는 숙소 이름 (예: 제주, 부산 해운대). check_in, check_out: YYYY-MM-DD 날짜. 사용자가 날짜를 말하지 않았으면 호출하지 말고 먼저 물어본다.
+    keyword: 지역 또는 숙소 이름 (예: 제주, 부산 해운대). check_in, check_out: 사용자가 말한 날짜 표현 그대로('10월 24일') 또는 YYYY-MM-DD(연도는 오늘 날짜 기준으로 정하며 짐작하지 않는다). 사용자가 날짜를 말하지 않았으면 호출하지 말고 먼저 물어본다.
     adults: 성인 수(기본 2), children: 아동 수, domestic: 국내면 true, 해외면 false.
     숙소를 묻는 질문에만 호출한다. 예약은 대신하지 않는다."""
     return search_stays(keyword, check_in, check_out, adults, children, domestic)

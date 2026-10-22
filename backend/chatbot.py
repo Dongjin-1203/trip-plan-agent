@@ -79,7 +79,9 @@ def _run_tool(call: dict, done: set) -> tuple[ToolMessage, dict]:
         if call["name"] == "find_stays":  # 숙소 서브에이전트: 조회한 숙소와 출처·조회 시각을 기록에 남긴다.
             log.update(source=result["source"], queried_at=result["queried_at"], count=len(result["stays"]), stays=result["stays"])
             shown = [{k: v for k, v in st.items() if k != "image"} for st in result["stays"]]
-            content = json.dumps({"조회조건": result["params"], "숙소": shown}, ensure_ascii=False) if shown else "검색 결과 0건"
+            note = result.get("date_note")
+            body = {"조회조건": result["params"], "숙소": shown, **({"알림": note} if note else {})}
+            content = json.dumps(body, ensure_ascii=False) if shown else "검색 결과 0건" + (f" ({note})" if note else "")
         elif isinstance(result, dict):  # 날씨 도구: 상태·출처·조회 시각을 기록에 그대로 남긴다.
             log.update(status=result["status"], source=result["source"], queried_at=result["queried_at"], result=result)
             content = json.dumps(result, ensure_ascii=False)
@@ -137,7 +139,7 @@ def _run_trip_tool(call: dict, facts: dict) -> tuple[ToolMessage, dict, dict]:
         content = json.dumps({"확정된 조건": trip_plan.public(trip), "안내": guide}, ensure_ascii=False)
         return ToolMessage(content=content, tool_call_id=call["id"]), {"tool": call["name"], "args": args, "status": "success"}, {**facts, "trip": trip}
 
-    trip, errors = trip_plan.update(facts.get("trip"), args)
+    trip, errors, notes = trip_plan.update(facts.get("trip"), args)
     lacking = trip_plan.missing(trip)
     saved = {k: v for k, v in args.items() if v is not None}
     log = {"tool": call["name"], "args": saved, "status": "error" if errors else "success", "missing": lacking}
@@ -148,7 +150,7 @@ def _run_trip_tool(call: dict, facts: dict) -> tuple[ToolMessage, dict, dict]:
     else:
         hint = "바뀐 조건이 없다."
     content = json.dumps(
-        {"저장된 조건": trip_plan.public(trip), "빠진 항목": lacking, "오류": errors, "안내": hint}, ensure_ascii=False,
+        {"저장된 조건": trip_plan.public(trip), "빠진 항목": lacking, "오류": errors, "알림": notes, "안내": hint}, ensure_ascii=False,
     )
     return ToolMessage(content=content, tool_call_id=call["id"]), log, {**facts, "trip": trip}
 
@@ -229,7 +231,10 @@ def ask_events(question: str, history: list[dict] | None = None, facts: dict | N
 
     # 메시지 객체로 직접 만들어 과거 대화의 중괄호가 템플릿 변수로 해석되지 않게 한다.
     today = now_kst().date()
-    today_note = f"오늘은 {today.isoformat()}({weekday_name(today)})이다. 상대 날짜는 이 날짜 기준으로 해석한다."
+    today_note = (
+        f"오늘은 {today.isoformat()}({weekday_name(today)})이다. 올해는 {today.year}년이다. 상대 날짜는 이 날짜 기준으로 해석한다. "
+        f"사용자가 연도를 말하지 않은 날짜는 오늘 이후 가장 가까운 날짜로 보며, 도구에 날짜를 넘길 때 연도를 짐작하지 않는다."
+    )
     # 대기 중인 제안의 종류: "draft"(초안 작성) 또는 "food"(맛집 추천). 옛 세션의 True는 draft다.
     kind = ("draft" if offer_pending is True else offer_pending) or None
     system = SYSTEM_PROMPT + "\n" + today_note

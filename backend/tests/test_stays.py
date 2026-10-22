@@ -47,11 +47,38 @@ def test_search_normalizes_and_builds_booking_link(rpc):
     assert args["keyword"] == "제주" and args["isDomestic"] is True and args["adultCount"] == 2
 
 
-@pytest.mark.parametrize("ci,co", [("2020-01-01", "2020-01-03"), ("내일", "모레"), ("", "")])
-def test_invalid_or_past_dates_are_rejected_without_calling(rpc, ci, co):
+@pytest.mark.parametrize("ci,co", [("abc", "def"), ("13월 45일", "14월 1일"), ("", "")])
+def test_unreadable_dates_are_rejected_without_calling(rpc, ci, co):
     with pytest.raises(stays.StaySearchError):
         stays.search_stays("제주", ci, co)
     assert rpc == []
+
+
+def test_past_date_in_this_year_is_rejected_not_shifted(rpc):
+    """올해 안의 지난 날짜는 사용자가 실제로 말했을 수 있으므로 해를 바꾸지 않고 거부한다."""
+    today = now_kst().date()
+    if today.month == 1 and today.day == 1:
+        pytest.skip("어제가 작년이 되는 날")
+    yesterday = today - timedelta(days=1)
+    with pytest.raises(stays.StaySearchError):
+        stays.search_stays("제주", yesterday.isoformat(), today.isoformat())
+    assert rpc == []
+
+
+def test_stale_year_from_model_is_corrected_to_this_year(rpc):
+    """모델이 올해를 잘못 알고 지난 해(2023)를 넣어도 올해 기준으로 바로잡고 안내를 남긴다."""
+    ci, co = dates()
+    stale_in, stale_out = (str(int(x[:4]) - 3) + x[4:] for x in (ci, co))
+    out = stays.search_stays("제주", stale_in, stale_out)
+    assert out["params"]["check_in"] == ci and out["params"]["check_out"] == co
+    assert out["date_note"] and ci in out["date_note"]
+    assert f"checkIn={ci}" in out["stays"][0]["booking_link"]
+    assert rpc[0][1]["arguments"]["checkIn"] == ci
+
+
+def test_relative_and_month_day_dates_are_understood(rpc):
+    out = stays.search_stays("제주", "내일", "3일 뒤")
+    assert out["date_note"] is None and out["params"]["check_in"] < out["params"]["check_out"]
 
 
 def test_checkout_must_follow_checkin_and_stay_is_limited(rpc):
@@ -92,6 +119,6 @@ def test_run_tool_records_stays_for_trace(rpc):
 
 
 def test_run_tool_reports_validation_error_to_model(rpc):
-    call = {"name": "find_stays", "args": {"keyword": "제주", "check_in": "2020-01-01", "check_out": "2020-01-02"}, "id": "t2"}
+    call = {"name": "find_stays", "args": {"keyword": "제주", "check_in": "abc", "check_out": "def"}, "id": "t2"}
     msg, log = _run_tool(call, set())
     assert log["status"] == "error" and msg.content.startswith("도구 오류")

@@ -66,6 +66,28 @@ def resolve_date(text: str, today: date | None = None) -> date | None:
     return None
 
 
+def _same_day(d: date, year: int) -> date:
+    try:
+        return d.replace(year=year)
+    except ValueError:  # 2월 29일이 없는 해
+        return d.replace(year=year, day=28)
+
+
+def resolve_future(text: str, floor: date | None = None, after: bool = False, today: date | None = None) -> tuple[date | None, bool]:
+    """resolve_date에 더해, 연도가 floor(기본 오늘)의 연도보다 이전으로 온 날짜는 같은 월·일의 가장 가까운 floor 이후 날짜로 바로잡는다.
+    모델이 올해를 잘못 알고 '2023-10-24'처럼 지난 해를 넣는 경우를 막는다. after=True면 floor 당일도 지난 것으로 본다(체크아웃용).
+    반환: (날짜 또는 None, 바로잡았는지). 올해 안의 지난 날짜는 사용자가 실제로 말했을 수 있으므로 바꾸지 않는다."""
+    today = today or now_kst().date()
+    floor = floor or today
+    d = resolve_date(text, today)
+    if d is None or d.year >= floor.year:
+        return d, False
+    fixed = _same_day(d, floor.year)
+    if fixed < floor or (after and fixed == floor):
+        fixed = _same_day(d, floor.year + 1)
+    return fixed, True
+
+
 def _result(status: str, region: str, **extra) -> dict:
     return {"status": status, "region": region, "source": SOURCE, "queried_at": now_kst().isoformat(timespec="seconds"), **extra}
 
@@ -79,16 +101,17 @@ def forecast(region: str, date_text: str) -> dict:
         return _result("error", region, message="지역이 필요합니다.")
     if not (date_text or "").strip():
         return _result("need_date", region, message="날짜를 먼저 물어보세요.")
-    target = resolve_date(date_text)
+    target, adjusted = resolve_future(date_text)
     if target is None:
         return _result("invalid_date", region, requested=date_text, message="날짜를 해석할 수 없습니다. 날짜를 다시 물어보세요.")
+    note = {"date_note": f"요청한 날짜 '{date_text}'의 연도가 지난 해라 {target.isoformat()}로 해석했다. 사용자에게 이 날짜가 맞는지 알린다."} if adjusted else {}
 
     today = now_kst().date()
     if not today <= target <= today + timedelta(days=FORECAST_DAYS - 1):
         # 범위 밖이면 API를 부르지 않는다.
         return _result(
             "out_of_range", region, date=target.isoformat(), weekday=weekday_name(target),
-            message=f"예보는 {today.isoformat()}부터 {FORECAST_DAYS}일 이내만 있습니다. 예보 없음.",
+            message=f"예보는 {today.isoformat()}부터 {FORECAST_DAYS}일 이내만 있습니다. 예보 없음.", **note,
         )
 
     try:
@@ -124,5 +147,5 @@ def forecast(region: str, date_text: str) -> dict:
         "ok", region, date=target.isoformat(), weekday=weekday_name(target),
         temp_max=daily["temperature_2m_max"][0], temp_min=daily["temperature_2m_min"][0],
         precip_prob=daily["precipitation_probability_max"][0],
-        units={"temp": "°C", "precip_prob": "%"}, location={"latitude": lat, "longitude": lon},
+        units={"temp": "°C", "precip_prob": "%"}, location={"latitude": lat, "longitude": lon}, **note,
     )
