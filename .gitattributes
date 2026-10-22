@@ -1,0 +1,5 @@
+# 모든 텍스트 파일을 LF로 유지한다(Windows의 자동 CRLF 변환 방지).
+# 셸 스크립트·Dockerfile은 CRLF가 섞이면 Linux/Git Bash/Cloud Build에서 실행이 깨진다.
+* text=auto eol=lf
+*.sh text eol=lf
+Dockerfile text eol=lf

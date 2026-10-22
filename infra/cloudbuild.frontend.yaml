@@ -1,0 +1,41 @@
+# 웹(Next.js): 이미지 빌드 → Artifact Registry 푸시 → Cloud Run(travel-web, 공개) 배포
+# 트리거(infra/create-triggers.sh)가 frontend/** 변경 때 실행한다. 수동 실행: gcloud builds submit --config infra/cloudbuild.frontend.yaml .
+# 웹 서버(BFF)가 비공개 백엔드를 부를 주소는 Cloud Run의 고정 형식(서비스-프로젝트번호.리전.run.app)으로 만들어 BACKEND_URL에 넣는다.
+substitutions:
+  _REGION: asia-northeast3
+  _AR_REPO: travel
+  _SERVICE: travel-web
+  _API_SERVICE: travel-api
+  _WEB_SA: travel-web-sa
+  _MAX_INSTANCES: "3"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "frontend/Dockerfile", "-t", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID", "frontend"]
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: ["push", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID"]
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID
+      - --region=${_REGION}
+      - --service-account=${_WEB_SA}@$PROJECT_ID.iam.gserviceaccount.com
+      - --allow-unauthenticated
+      - --set-env-vars=BACKEND_URL=https://${_API_SERVICE}-$PROJECT_NUMBER.${_REGION}.run.app
+      - --min-instances=0
+      - --max-instances=${_MAX_INSTANCES}
+      - --cpu=1
+      - --memory=512Mi
+      - --timeout=300
+      - --quiet
