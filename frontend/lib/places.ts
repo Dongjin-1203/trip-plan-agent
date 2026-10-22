@@ -1,0 +1,28 @@
+import type { AssistantMessage, TracePlace } from "./types";
+
+export type CardPlace = TracePlace & { no: number };
+
+// 답변 본문에 이름이 나온 조회 결과만 카드로 만든다(본문 등장 순서). 본문과 맞는 장소가 없으면 빈 배열 → 텍스트 폴백.
+export function placesFromMessage(msg: AssistantMessage): CardPlace[] {
+  if (msg.error || msg.draft || msg.food) return [];
+  const seen = new Set<string>();
+  const found: { place: TracePlace; at: number }[] = [];
+  for (const step of msg.trace?.steps ?? []) {
+    for (const place of step.places ?? []) {
+      if (!place.name || seen.has(place.name)) continue;
+      const at = msg.content.indexOf(place.name);
+      if (at < 0) continue;
+      seen.add(place.name);
+      found.push({ place, at });
+    }
+  }
+  return found.sort((a, b) => a.at - b.at).map((f, i) => ({ ...f.place, no: i + 1 }));
+}
+
+export function regionOf(msg: AssistantMessage): string | null {
+  for (const step of msg.trace?.steps ?? []) {
+    const region = step.args?.region;
+    if (typeof region === "string" && region.trim()) return region.trim();
+  }
+  return msg.draft?.cond.region || null;
+}

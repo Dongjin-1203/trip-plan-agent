@@ -10,29 +10,42 @@ const STATUS_LABEL: Record<string, string> = {
   partial: "일부 성공",
 };
 
+const TOOL_LABEL: Record<string, string> = {
+  search_places: "장소 검색",
+  get_weather: "날씨 조회",
+  draft_travel_plan: "여행 초안 작성",
+  nearby_restaurants: "근처 맛집 검색",
+};
+
+const ARG_LABEL: Record<string, string> = {
+  region: "지역",
+  category: "종류",
+  date: "날짜",
+  start_date: "시작일",
+  days: "일수",
+  departure: "출발",
+  return_time: "귀가",
+};
+
 function argText(args?: Record<string, unknown>) {
   if (!args) return "";
   return Object.entries(args)
-    .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`)
+    .map(([k, v]) => `${ARG_LABEL[k] ?? k}: ${typeof v === "string" ? v : JSON.stringify(v)}`)
     .join(" · ");
 }
 
 export default function TracePanel({ trace }: { trace: Trace }) {
   return (
     <details className="trace">
-      <summary>
-        실행 기록 · 도구 {trace.tool_calls ?? trace.steps.length}
-        {trace.tool_limit ? `/${trace.tool_limit}` : ""}회
-        {trace.model_calls != null ? ` · 모델 ${trace.model_calls}${trace.model_limit ? `/${trace.model_limit}` : ""}회` : ""}
-      </summary>
+      <summary>처리 과정 보기</summary>
       {trace.grounded === false && (
-        <p className="warn">⚠️ 답변과 조회 결과가 일치하지 않을 수 있어요. 지도 링크로 직접 확인해 주세요.</p>
+        <p className="warn">주의: 답변과 조회 결과가 일치하지 않을 수 있어요. 지도 링크로 직접 확인해 주세요.</p>
       )}
       <ol className="trace-steps">
         {trace.steps.map((s) => (
           <li key={s.step}>
             <div className="trace-head">
-              <strong>{s.tool}</strong>
+              <strong>{TOOL_LABEL[s.tool] ?? s.tool}</strong>
               <span className={`chip chip-${s.status === "error" || s.status === "auth_error" ? "bad" : "ok"}`}>
                 {STATUS_LABEL[s.status] ?? s.status}
               </span>
@@ -55,13 +68,18 @@ export default function TracePanel({ trace }: { trace: Trace }) {
               </ul>
             )}
             {s.warnings?.map((w, i) => (
-              <div key={i} className="small warn">⚠️ {w}</div>
+              <div key={i} className="small warn">주의: {w}</div>
             ))}
             {s.source && <div className="muted small">출처: {s.source}</div>}
           </li>
         ))}
       </ol>
-      {trace.end && <p className="muted small">종료: {trace.end}</p>}
+      <p className="muted small">
+        도구 {trace.tool_calls ?? trace.steps.length}
+        {trace.tool_limit ? `/${trace.tool_limit}` : ""}회
+        {trace.model_calls != null ? ` · 모델 ${trace.model_calls}${trace.model_limit ? `/${trace.model_limit}` : ""}회` : ""}
+        {trace.end ? ` · 종료: ${trace.end}` : ""}
+      </p>
     </details>
   );
 }

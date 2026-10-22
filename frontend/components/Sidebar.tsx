@@ -1,6 +1,7 @@
 "use client";
 
 import type { SessionSummary } from "@/lib/types";
+import { LogoIcon, TrashIcon } from "./Icons";
 
 type Props = {
   sessions: SessionSummary[];
@@ -19,7 +20,7 @@ export default function Sidebar({ sessions, activeId, open, busy, onNew, onSelec
       <div className={`scrim ${open ? "show" : ""}`} onClick={onClose} />
       <aside className={`sidebar ${open ? "open" : ""}`}>
         <div className="brand">
-          <span className="logo">✈</span> 여행 챗봇
+          <span className="logo"><LogoIcon /></span> 여행 챗봇
         </div>
         <button className="btn btn-primary block" onClick={onNew} disabled={busy}>
           ＋ 새 대화
@@ -39,7 +40,7 @@ export default function Sidebar({ sessions, activeId, open, busy, onNew, onSelec
                   if (window.confirm("이 대화를 삭제할까요? 되돌릴 수 없어요.")) onDelete(s.id);
                 }}
               >
-                🗑
+                <TrashIcon />
               </button>
             </div>
           ))}

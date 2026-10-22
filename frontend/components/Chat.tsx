@@ -13,11 +13,17 @@ import type { AssistantMessage, FoodRequest, Message, SessionSummary } from "@/l
 import FoodForm from "./FoodForm";
 import MessageView, { Markdown } from "./MessageView";
 import Sidebar from "./Sidebar";
+import Suggestions, { suggestionsFor } from "./Suggestions";
 
 type Live = { text: string; label: string; lines: string[] };
 
 const LAST_KEY = "travel-chat:last-session";
-const EXAMPLES = ["경주 실내 관광지 추천해줘", "서울 성수동 카페 알려줘", "부산 가볼 만한 곳 추천해줘"];
+const STARTERS = [
+  { title: "장소 추천", prompt: "경주 실내 관광지 추천해줘" },
+  { title: "날씨 확인", prompt: "이번 주 토요일 제주 날씨 알려줘" },
+  { title: "여행 일정 초안", prompt: "부산 가볼 만한 곳 추천해줘" },
+  { title: "일자별 맛집", prompt: "서울 성수동 맛집 알려줘" },
+];
 const FOOD_MSG = /^맛집 추천: (\d{4}-\d{2}-\d{2})부터 (\d+)일 · 출발 (\d{2}:\d{2}) · 귀가 (\d{2}:\d{2})$/;
 
 function remember(id: string | null) {
@@ -240,6 +246,7 @@ export default function Chat() {
   const last = messages[messages.length - 1];
   const lastBot = last?.role === "assistant" ? last : null;
   const idle = !busy && !live;
+  const chips = useMemo(() => (lastBot ? suggestionsFor(lastBot) : []), [lastBot]);
 
   return (
     <div className="app">
@@ -268,10 +275,11 @@ export default function Chat() {
               <div className="empty">
                 <h1>어디로 떠나볼까요?</h1>
                 <p className="muted">장소를 물어보고, 날씨를 확인하고, 여행 초안과 일자별 맛집까지 이어서 받아보세요.</p>
-                <div className="chips">
-                  {EXAMPLES.map((ex) => (
-                    <button key={ex} className="btn btn-secondary" disabled={busy} onClick={() => send(ex)}>
-                      {ex}
+                <div className="starters">
+                  {STARTERS.map((s) => (
+                    <button key={s.title} className="starter" disabled={busy} onClick={() => send(s.prompt)}>
+                      <span className="starter-title">{s.title}</span>
+                      <span className="starter-prompt">{s.prompt}</span>
                     </button>
                   ))}
                 </div>
@@ -288,11 +296,15 @@ export default function Chat() {
                   <div className="status-line" role="status">
                     <span className="spinner" aria-hidden /> {live.label}
                   </div>
-                  {live.text && (
-                    <div className="bubble bot">
+                  <div className="bubble bot live-bubble">
+                    {live.text ? (
                       <Markdown text={live.text} />
-                    </div>
-                  )}
+                    ) : (
+                      <span className="typing" aria-hidden>
+                        <i /><i /><i />
+                      </span>
+                    )}
+                  </div>
                   {live.lines.length > 0 && (
                     <details className="trace">
                       <summary>실행 기록 (진행 중)</summary>
@@ -310,15 +322,17 @@ export default function Chat() {
             {idle && lastBot?.error && (
               <div className="row-bot">
                 <button className="btn btn-primary" onClick={retryLast}>
-                  🔄 다시 시도
+                  다시 시도하기
                 </button>
               </div>
             )}
 
+            {idle && lastBot && !lastBot.error && <Suggestions items={chips} onPick={(t) => send(t)} />}
+
             {idle && lastBot && !lastBot.error && lastBot.offer === "draft" && (
               <div className="row-bot offer-row">
                 <button className="btn btn-primary" onClick={() => send("네, 작성해 주세요")}>
-                  ✅ 초안 작성하기
+                  초안 작성하기
                 </button>
                 <button className="btn btn-secondary" onClick={() => send("아니요, 괜찮아요")}>
                   다음에
@@ -362,6 +376,7 @@ export default function Chat() {
             value={input}
             rows={1}
             maxLength={500}
+            aria-label="메시지 입력"
             placeholder="예: 경주 실내 관광지 추천해줘"
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {

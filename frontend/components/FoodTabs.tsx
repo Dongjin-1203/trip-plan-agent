@@ -12,7 +12,7 @@ export default function FoodTabs({ food, showMap }: { food: Food; showMap: boole
   if (food.failed || days.length === 0) {
     return (
       <section className="card">
-        <h3>🍽️ 일자별 맛집 추천</h3>
+        <h3>일자별 맛집 추천</h3>
         <p className="muted">맛집을 찾지 못했어요. 잠시 후 다시 시도해 주세요.</p>
         <Notes notes={food.notes} />
       </section>
@@ -27,7 +27,7 @@ export default function FoodTabs({ food, showMap }: { food: Food; showMap: boole
 
   return (
     <section className="card">
-      <h3>🍽️ 일자별 맛집 추천</h3>
+      <h3>일자별 맛집 추천</h3>
       <div className="tabs" role="tablist">
         {days.map((d, i) => (
           <button

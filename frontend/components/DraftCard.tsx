@@ -9,9 +9,9 @@ export default function DraftCard({ draft, showMap }: { draft: Draft; showMap: b
   );
   return (
     <section className="card">
-      <h3>🗺️ 여행 계획 초안{title ? ` — ${title}` : ""}</h3>
+      <h3>여행 계획 초안{title ? ` — ${title}` : ""}</h3>
       {draft.warnings.map((w, i) => (
-        <p key={i} className="warn">⚠️ {w}</p>
+        <p key={i} className="warn">{w}</p>
       ))}
       <div className="place-grid">
         {draft.places.map((p, i) => (
@@ -34,7 +34,7 @@ export default function DraftCard({ draft, showMap }: { draft: Draft; showMap: b
       <p className="muted small">시간대는 제안일 뿐이며, 영업시간은 방문 전에 직접 확인해 주세요.</p>
       {showMap && <PlaceMap points={points} />}
       <div className="packing">
-        <h4>🎒 준비물</h4>
+        <h4>준비물</h4>
         {draft.packing.length ? (
           <ul>
             {draft.packing.map((t, i) => (

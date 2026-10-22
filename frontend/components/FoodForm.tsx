@@ -32,7 +32,7 @@ export default function FoodForm({ defaultStart, disabled, onSubmit, onDismiss }
   return (
     <form className="card offer" onSubmit={submit}>
       <p>
-        <strong>🍽️ 일정에 맞춰 일자별 맛집도 추천해 드릴까요?</strong>
+        <strong>일정에 맞춰 일자별 맛집도 추천해 드릴까요?</strong>
         <br />
         <span className="muted small">여행 기간과 출발·귀가 시각을 알려 주세요. 끼니 시각을 계산해 근처 식당을 찾아요.</span>
       </p>
