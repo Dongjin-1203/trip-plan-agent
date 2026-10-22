@@ -50,6 +50,16 @@ class RateCounter(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
 
 
+class PlaceInfoCache(Base):
+    """장소 정보(운영시간·메뉴) 웹검색 결과 캐시. key는 종류·이름·주소의 해시."""
+
+    __tablename__ = "place_info_cache"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    payload: Mapped[dict] = mapped_column(JSON)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
 _is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 engine = create_engine(
     settings.DATABASE_URL,

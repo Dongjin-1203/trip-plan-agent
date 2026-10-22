@@ -16,6 +16,7 @@ END_LABELS = {
     "food": "입력한 기간·출발시간으로 끼니를 계산해 초안 장소 주변 반경 검색으로 맛집을 추천했다(조회 결과만 근거)",
     "weather": "날씨 조회 후 답했다",
     "stays": "숙소 조회 후 답했다(마이리얼트립 조회 결과만 근거)",
+    "info": "장소 정보를 웹검색으로 조회해 답했다(출처가 있는 값만 근거)",
     "trip_ask": "여행 조건 수집 중: 빠진 항목을 사용자에게 물었다",
     "trip_confirm": "여행 조건 수집 완료: 요약을 보여 주고 작성 동의를 받는다",
     "plan": "동의 후 장소·날씨·숙소를 조회해 여행 계획을 작성했다(조회 결과만 근거)",
@@ -39,6 +40,8 @@ def _step_note(prev: dict | None, log: dict) -> str:
     if log["tool"] == "nearby_restaurants":
         a = log["args"]
         return f"여행 {a.get('days', '?')}일 · 끼니 {a.get('meals', '?')}끼 · 기준 장소별 반경 검색(끼니마다 1곳 추천)"
+    if log["tool"] == "get_places_info":
+        return "장소 정보 웹검색 — 출처가 있는 값만 사용(공휴일·임시 휴업은 방문 전 확인)"
     if log["tool"] == "find_stays":
         return "숙소 조회 — 마이리얼트립 검색 결과(가격·예약 링크는 변동될 수 있음)" if log["status"] == "success" else f"숙소 조회 결과 {log['status']}"
     if log["tool"] == "get_weather":
@@ -68,6 +71,8 @@ def _end_reason(logs: list[dict], limit_hit: bool) -> str:
         return "limit"
     if logs[-1]["tool"] == "find_stays" and logs[-1]["status"] == "success" and logs[-1].get("count"):
         return "stays"
+    if logs[-1]["tool"] == "get_places_info":
+        return "info"
     if logs[-1]["tool"] == "get_weather":
         return "weather" if logs[-1]["status"] == "ok" else "weather_none"
     count = logs[-1].get("count", 0)

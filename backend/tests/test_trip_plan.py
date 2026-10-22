@@ -5,6 +5,7 @@ import pytest
 from langchain_core.messages import AIMessageChunk
 
 import chatbot
+import place_info
 import stays
 import tools
 import trip_plan
@@ -116,6 +117,8 @@ def test_complete_info_asks_for_consent_without_another_model_call(llm):
 def test_consent_composes_plan_with_wider_limits_and_no_draft_card(llm, monkeypatch):
     monkeypatch.setattr(tools, "_search", lambda region, category: [{"name": "협재해수욕장", "address": "제주", "map_link": "http://place.map.kakao.com/1", "x": "126.2", "y": "33.3"}])
     monkeypatch.setattr(weather, "forecast", lambda region, date: {"status": "ok", "source": "t", "queried_at": "q", "region": region, "date": START, "weekday": "토", "temp_max": 18.0, "temp_min": 10.0, "precip_prob": 10, "units": {}})
+    monkeypatch.setattr(place_info, "_cache_get", None)
+    monkeypatch.setattr(place_info, "_web_search", lambda n, a, k: (json.dumps({"found": True, "weekly_hours": {"sat": "09:00-18:00"}}), [{"title": "t", "url": "https://example.com/x"}]))
     monkeypatch.setattr(stays, "search_stays", lambda *a, **k: {"stays": [{"gid": 7, "name": "바다호텔", "booking_link": "https://accommodation.myrealtrip.com/union/products/7?x=1"}], "source": "s", "queried_at": "q", "params": {}})
     trip, _, _ = trip_plan.update(None, FULL)
     trip["stage"] = "confirm"
@@ -124,6 +127,7 @@ def test_consent_composes_plan_with_wider_limits_and_no_draft_card(llm, monkeypa
         ("tool", "search_places", {"region": "제주", "category": "관광지"}),
         ("tool", "get_weather", {"region": "제주", "date": START}),
         ("tool", "find_stays", {"keyword": "제주", "check_in": START, "check_out": trip_plan.check_out(trip), "adults": 2}),
+        ("tool", "get_places_info", {"places": [{"name": "협재해수욕장", "address": "제주"}], "kind": "attraction", "dates": [START]}),
         ("text", "## 여행 개요\n[협재해수욕장](http://place.map.kakao.com/1) / [바다호텔](https://accommodation.myrealtrip.com/union/products/7?x=1)"),
     ]
     _, final = run("네, 작성해 주세요", {"trip": trip, "places": None}, offer_pending="plan")
@@ -131,7 +135,8 @@ def test_consent_composes_plan_with_wider_limits_and_no_draft_card(llm, monkeypa
     assert final["offer"] is False  # 장소+날씨가 있어도 초안 카드를 따로 묻지 않는다
     assert final["facts"]["trip"]["stage"] == "done"
     t = final["trace"]
-    assert t["tool_limit"] == 7 and t["tool_calls"] == 4 and t["grounded"] is True and "여행 계획을 작성" in t["end"]
+    assert t["tool_limit"] == 9 and t["tool_calls"] == 5 and t["grounded"] is True and "여행 계획을 작성" in t["end"]
+    assert t["steps"][-1]["tool"] == "get_places_info" and t["steps"][-1]["infos"][0]["status"] == "found"
 
 
 def test_plan_with_unlisted_link_is_flagged(llm, monkeypatch):

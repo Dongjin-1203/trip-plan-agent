@@ -39,6 +39,7 @@ cp .env.example .env                                   # 키를 채운다
 | `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT` | 트레이싱(선택). 키가 있으면 자동으로 켜지고 `LANGSMITH_TRACING=false`로 끔 |
 | `DATABASE_URL` | 운영: `postgresql+psycopg://사용자:비밀번호@/DB?host=/cloudsql/프로젝트:리전:인스턴스` |
 | `RATE_LIMIT_PER_MINUTE`, `RATE_LIMIT_PER_DAY`, `IP_RATE_LIMIT_PER_MINUTE` | 요청 제한 |
+| `PLACE_INFO_ENABLED`, `WEB_SEARCH_MODEL` | 장소 정보(웹검색) 기능. 기본 켜짐, `false`로 끔. 모델은 기본으로 `OPENAI_MODEL`을 쓰고 웹검색 도구를 지원하는 모델이어야 함 |
 | `TRUST_CLIENT_IP_HEADER` | 웹 서버(BFF)가 보낸 `X-Client-Ip`를 믿을지. 백엔드가 비공개일 때만 `true` |
 
 ## 참고

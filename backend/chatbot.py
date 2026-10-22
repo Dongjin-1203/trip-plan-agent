@@ -1,4 +1,5 @@
 import json
+from datetime import date, timedelta
 
 import openai
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -11,12 +12,13 @@ from meals import food_text, plan_food
 from plan import FOOD_OFFER_TEXT, OFFER_TEXT, draft_from_facts, merge_lookup, offer_ready
 from run_trace import build_trace
 from stays import StaySearchError, find_stays
+import place_info
 import trip_plan
 from trip_plan import confirm_trip_plan, save_trip_info
 from tools import PlaceAuthError, PlaceSearchError, get_weather, search_places
 from weather import now_kst, weekday_name
 
-TOOLS = {t.name: t for t in (search_places, get_weather, find_stays)}
+TOOLS = {t.name: t for t in (search_places, get_weather, find_stays, *([place_info.get_places_info] if place_info.enabled() else []))}
 
 
 @tool
@@ -63,7 +65,7 @@ def _run_tool(call: dict, done: set) -> tuple[ToolMessage, dict]:
     done: 이번 질문에서 이미 실행한 (도구, 인자) 집합. 같은 인자의 반복 검색은 실행하지 않는다."""
     args = call["args"]
     log = {"tool": call["name"], "args": args, "status": "success"}
-    key = (call["name"], tuple(sorted(args.items())))
+    key = (call["name"], json.dumps(args, sort_keys=True, ensure_ascii=False))  # 목록 인자도 비교할 수 있게
     if key in done:
         log["status"] = "skipped"
         return ToolMessage(
@@ -82,6 +84,17 @@ def _run_tool(call: dict, done: set) -> tuple[ToolMessage, dict]:
             note = result.get("date_note")
             body = {"조회조건": result["params"], "숙소": shown, **({"알림": note} if note else {})}
             content = json.dumps(body, ensure_ascii=False) if shown else "검색 결과 0건" + (f" ({note})" if note else "")
+        elif call["name"] == "get_places_info":  # 장소 정보(웹검색): 확인된 값과 출처를 기록에 남긴다.
+            found = sum(r["status"] == "found" for r in result["results"])
+            log.update(
+                status="success" if found == len(result["results"]) else "partial" if found else "no_data",
+                source=result["source"], queried_at=result["queried_at"], count=found, infos=result["results"],
+            )
+            content = json.dumps(
+                {"조회": [place_info.compact_for_model(r) for r in result["results"]],
+                 "안내": "웹 검색 기준이며 틀리거나 오래됐을 수 있다. 없는 항목은 '확인 필요'로 적고 지어내지 않는다. 공휴일·임시 휴업은 방문 전 확인을 안내한다."},
+                ensure_ascii=False,
+            )
         elif isinstance(result, dict):  # 날씨 도구: 상태·출처·조회 시각을 기록에 그대로 남긴다.
             log.update(status=result["status"], source=result["source"], queried_at=result["queried_at"], result=result)
             content = json.dumps(result, ensure_ascii=False)
@@ -125,6 +138,8 @@ def _run_trip_tool(call: dict, facts: dict) -> tuple[ToolMessage, dict, dict]:
             log = {"tool": call["name"], "args": args, "status": "error"}
             return ToolMessage(content="도구 오류: 작성 동의를 받을 조건이 아직 준비되지 않았습니다.", tool_call_id=call["id"]), log, facts
         trip = {**trip, "stage": "compose"}
+        start = date.fromisoformat(trip["start_date"])
+        days = [(start + timedelta(days=i)).isoformat() for i in range(trip["nights"] + 1)]
         stay = (
             f"3) find_stays(keyword={trip['destination']}, check_in={trip['start_date']}, check_out={trip_plan.check_out(trip)}, "
             f"adults={trip['adults']}, children={trip.get('children', 0)}, domestic는 국내면 true) — 숙소 조회가 필요하므로 호출한다."
@@ -134,6 +149,8 @@ def _run_trip_tool(call: dict, facts: dict) -> tuple[ToolMessage, dict, dict]:
             "동의를 받았다. 이제 아래 순서로 조회한 뒤 조회한 값만 근거로 '출력 형식'에 맞춰 여행 계획을 텍스트로 쓴다. "
             f"1) search_places(region={trip['destination']}, category=관광지 등 필요한 종류)로 갈 만한 장소를 찾는다. "
             f"2) get_weather(region={trip['destination']}, date={trip['start_date']})로 날씨를 확인한다. {stay} "
+            f"4) 일정에 넣을 관광지를 search_places 결과에서 최대 6곳 골라 get_places_info(kind=attraction, dates={days})로 운영시간과 휴무를 확인한다. "
+            "식당을 일정에 넣으려면 search_places로 맛집을 찾은 뒤 get_places_info(kind=restaurant)로 메뉴를 확인한다. 휴무인 날에는 그 장소를 넣지 않는다. "
             "예보 범위 밖이거나 도구 오류가 있으면 그 사실을 밝히고 해당 부분은 '확인 필요'로 적는다."
         )
         content = json.dumps({"확정된 조건": trip_plan.public(trip), "안내": guide}, ensure_ascii=False)
@@ -163,6 +180,8 @@ def _describe(call: dict) -> str:
         return "🧭 여행 계획 작성 준비 중"
     if call["name"] == "get_weather":
         return f"🌤️ 날씨 조회 중: {args.get('region', '')} {args.get('date', '')}".strip()
+    if call["name"] == "get_places_info":
+        return f"🕒 장소 정보 확인 중: {len(args.get('places') or [])}곳"
     if call["name"] == "find_stays":
         return f"🏨 숙소 조회 중: {args.get('keyword', '')} {args.get('check_in', '')}~{args.get('check_out', '')}".strip()
     return f"🔎 장소 검색 중: {args.get('region', '')} {args.get('category', '')}".strip()

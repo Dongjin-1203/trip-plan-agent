@@ -8,6 +8,7 @@ const STATUS_LABEL: Record<string, string> = {
   skipped: "건너뜀",
   out_of_range: "범위 밖",
   partial: "일부 성공",
+  no_data: "확인 못 함",
 };
 
 const TOOL_LABEL: Record<string, string> = {
@@ -16,12 +17,16 @@ const TOOL_LABEL: Record<string, string> = {
   draft_travel_plan: "여행 초안 작성",
   nearby_restaurants: "근처 맛집 검색",
   find_stays: "숙소 조회",
+  get_places_info: "장소 정보 확인(웹 검색)",
   save_trip_info: "여행 조건 정리",
   confirm_trip_plan: "계획 작성 시작",
 };
 
 const ARG_LABEL: Record<string, string> = {
   region: "지역",
+  kind: "종류",
+  dates: "날짜",
+  places: "장소",
   keyword: "지역",
   destination: "목적지",
   nights: "박수",
@@ -41,10 +46,17 @@ const ARG_LABEL: Record<string, string> = {
   return_time: "귀가",
 };
 
+function argValue(k: string, v: unknown): string {
+  if (typeof v === "string") return v;
+  if (k === "places" && Array.isArray(v)) return v.map((p) => (p as { name?: string }).name ?? "").filter(Boolean).join(", ");
+  if (Array.isArray(v)) return v.join(", ");
+  return JSON.stringify(v);
+}
+
 function argText(args?: Record<string, unknown>) {
   if (!args) return "";
   return Object.entries(args)
-    .map(([k, v]) => `${ARG_LABEL[k] ?? k}: ${typeof v === "string" ? v : JSON.stringify(v)}`)
+    .map(([k, v]) => `${ARG_LABEL[k] ?? k}: ${argValue(k, v)}`)
     .join(" · ");
 }
 

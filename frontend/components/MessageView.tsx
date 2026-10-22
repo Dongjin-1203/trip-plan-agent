@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { placesFromMessage, staysFromMessage } from "@/lib/places";
+import { infoByName, placesFromMessage, staysFromMessage } from "@/lib/places";
 import type { Message } from "@/lib/types";
 import DraftCard from "./DraftCard";
 import FoodTabs from "./FoodTabs";
@@ -67,6 +67,7 @@ function BotBubble({ text, hideNames }: { text: string; hideNames: string[] }) {
 
 export default function MessageView({ msg, mapDraft, mapFood, onRegenerate }: Props) {
   const places = useMemo(() => (msg.role === "assistant" ? placesFromMessage(msg) : []), [msg]);
+  const infos = useMemo(() => (msg.role === "assistant" ? infoByName(msg) : {}), [msg]);
   const stays = useMemo(() => (msg.role === "assistant" ? staysFromMessage(msg) : []), [msg]);
   const names = useMemo(() => [...places.map((p) => p.name), ...stays.map((s) => s.name)], [places, stays]);
 
@@ -92,7 +93,7 @@ export default function MessageView({ msg, mapDraft, mapFood, onRegenerate }: Pr
         ) : (
           <>
             <BotBubble text={msg.content} hideNames={names} />
-            {places.length > 0 && <PlaceCards places={places} />}
+            {places.length > 0 && <PlaceCards places={places} infos={infos} />}
             {stays.length > 0 && <StayCards stays={stays} />}
           </>
         )}

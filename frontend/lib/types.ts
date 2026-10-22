@@ -16,6 +16,18 @@ export type TraceStay = {
   booking_link: string;
 };
 
+export type PlaceInfo = {
+  name: string;
+  kind?: string;
+  status: "found" | "not_found" | "error";
+  weekly_hours?: Record<string, string | null> | null;
+  by_date?: Record<string, string>;
+  closed_note?: string | null;
+  menu?: { name: string; price?: string | null }[];
+  notes?: string | null;
+  sources?: { title: string; url: string }[];
+};
+
 export type TraceStep = {
   step: number;
   tool: string;
@@ -25,6 +37,7 @@ export type TraceStep = {
   count?: number;
   places?: TracePlace[];
   stays?: TraceStay[];
+  infos?: PlaceInfo[];
   source?: string;
   queried_at?: string;
   result?: Record<string, unknown>;

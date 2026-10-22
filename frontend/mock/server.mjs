@@ -39,7 +39,12 @@ function build(body) {
     return {
       content: "## 여행 개요\n- 경주 2박 3일 · 성인 2명\n\n## 일정\n### 1일차 - 역사 산책\n- 오전: **국립경주박물관**\n- 오후: **첨성대**\n\n## 예상 비용\n- 숙박은 조회 시점 기준이며 변동될 수 있어요.\n\n수정하고 싶은 일차를 알려 주세요.",
       question: q, offer: false, draft: null, food: null, error: false,
-      trace: trace([{ step: 1, tool: "confirm_trip_plan", args: {}, status: "success", note: "사용자 동의 확인" }, { step: 2, tool: "search_places", args: { region: "경주", category: "관광지" }, status: "success", note: "첫 검색", count: 3, places: PLACES.slice(0, 3) }]),
+      trace: trace([{ step: 1, tool: "confirm_trip_plan", args: {}, status: "success", note: "사용자 동의 확인" }, { step: 2, tool: "search_places", args: { region: "경주", category: "관광지" }, status: "success", note: "첫 검색", count: 3, places: PLACES.slice(0, 3) },
+        { step: 3, tool: "get_places_info", args: { kind: "attraction", dates: ["2026-11-14", "2026-11-15"], places: [{ name: "국립경주박물관" }, { name: "첨성대" }] }, status: "partial", note: "장소 정보 웹검색", count: 1, source: "웹 검색(OpenAI web_search)",
+          infos: [
+            { name: "국립경주박물관", kind: "attraction", status: "found", weekly_hours: { mon: "closed", tue: "10:00-18:00", wed: "10:00-18:00", thu: "10:00-18:00", fri: "10:00-18:00", sat: "10:00-21:00", sun: "10:00-18:00" }, by_date: { "2026-11-14(토)": "10:00-21:00", "2026-11-15(일)": "10:00-18:00" }, closed_note: "매주 월요일 휴관", menu: [], notes: null, sources: [{ title: "공식 안내", url: "https://example.com/museum" }] },
+            { name: "첨성대", kind: "attraction", status: "not_found", weekly_hours: null, closed_note: null, menu: [], notes: null, sources: [] },
+          ] }]),
     };
   }
   if (q.includes("조건 입력 완료")) {

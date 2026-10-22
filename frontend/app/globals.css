@@ -145,6 +145,10 @@ h4 { font-size: 16px; }
   background: none; border: 0; border-radius: 9999px; padding: 6px 10px; cursor: pointer;
 }
 .act-btn:hover:not(:disabled) { background: var(--strong); color: var(--ink); }
+.pinfo { margin-top: 4px; display: flex; flex-direction: column; gap: 2px; }
+.pinfo .closed { color: var(--error); font-weight: 600; }
+.pinfo summary { cursor: pointer; color: var(--muted); }
+.pinfo ul { margin: 4px 0 0; padding-left: 18px; }
 .stay-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 .stay { display: flex; gap: 12px; border: 1px solid var(--hairline-soft); border-radius: var(--r-md); padding: 10px; background: var(--canvas); }
 .stay:hover { border-color: var(--ink); }

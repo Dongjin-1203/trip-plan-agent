@@ -1,4 +1,4 @@
-import type { AssistantMessage, TracePlace, TraceStay } from "./types";
+import type { AssistantMessage, PlaceInfo, TracePlace, TraceStay } from "./types";
 
 export type CardPlace = TracePlace & { no: number };
 
@@ -17,6 +17,15 @@ export function placesFromMessage(msg: AssistantMessage): CardPlace[] {
     }
   }
   return found.sort((a, b) => a.at - b.at).map((f, i) => ({ ...f.place, no: i + 1 }));
+}
+
+// 웹 검색으로 조회한 장소 정보를 장소 이름으로 찾을 수 있게 모은다.
+export function infoByName(msg: AssistantMessage): Record<string, PlaceInfo> {
+  const out: Record<string, PlaceInfo> = {};
+  for (const step of msg.trace?.steps ?? []) {
+    for (const info of step.infos ?? []) out[info.name] = info;
+  }
+  return out;
 }
 
 // 답변 본문에 이름이 나온 숙소만 카드로 만든다(본문 등장 순서).

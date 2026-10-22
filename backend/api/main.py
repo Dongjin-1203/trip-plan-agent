@@ -11,7 +11,8 @@ from sqlalchemy import text
 from starlette.background import BackgroundTask
 
 import config
-from api import ratelimit, settings, store
+import place_info
+from api import infocache, ratelimit, settings, store
 from api.db import SessionLocal, init_db
 from api.schemas import ChatRequest
 from api.serialize import public_message
@@ -31,6 +32,7 @@ async def lifespan(app: FastAPI):
         init_db()
     except Exception:  # 인스턴스가 동시에 시작해 테이블 생성이 겹쳐도 서버는 뜨게 한다
         logger.exception("init_db failed")
+    place_info.set_cache(infocache.get, infocache.put)
     yield
 
 

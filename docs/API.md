@@ -136,6 +136,16 @@ DB 연결까지 확인. 실패 시 503.
             "rating": 4.2, "review_count": "2,775", "tags": ["무료취소"], "image": "https://…", "booking_link": "https://accommodation.myrealtrip.com/union/products/2680814?checkIn=…"}]}
 ```
 
+장소 정보 단계(`tool: "get_places_info"`)는 웹검색으로 조회한 관광지 운영시간·휴무나 식당 메뉴를 `infos`에 담습니다. `status`는 `success`(모두 확인) / `partial`(일부만) / `no_data`(확인 못 함)이고, `infos[].status`는 `found` / `not_found` / `error`입니다. `found`일 때만 값이 있고 `sources`(검색이 인용한 https 주소)가 반드시 하나 이상 있습니다. `weekly_hours`의 값은 `"09:00-18:00"` / `"closed"` / `"24h"` / `null`(확인 필요), `by_date`는 요청한 날짜별 상태 문구입니다. 공휴일·임시 휴업은 반영되지 않습니다.
+```json
+{"step": 3, "tool": "get_places_info", "args": {"kind": "attraction", "dates": ["2026-11-14"], "places": [{"name": "…", "address": "…"}]},
+ "status": "partial", "count": 1, "source": "웹 검색(OpenAI web_search)", "queried_at": "2026-10-22T14:00:00+09:00",
+ "infos": [{"name": "…", "kind": "attraction", "status": "found", "cached": false,
+            "weekly_hours": {"mon": "closed", "tue": "10:00-18:00", "wed": null, "thu": null, "fri": null, "sat": null, "sun": null},
+            "by_date": {"2026-11-14(토)": "10:00-18:00"}, "closed_note": "매주 월요일 휴관", "menu": [], "notes": null,
+            "sources": [{"title": "…", "url": "https://…"}]}]}
+```
+
 `status` 값 예: `success`, `ok`, `error`, `auth_error`, `skipped`, `out_of_range`, `partial`. `grounded: false`면 "답변과 조회 결과가 일치하지 않음" 경고를 보여줍니다. 도구마다 추가 필드(`warnings`, `checks` 등)가 있을 수 있으므로 **모르는 필드는 무시**합니다.
 
 #### Draft (여행 계획 초안)
@@ -176,7 +186,7 @@ DB 연결까지 확인. 실패 시 503.
 1. `final` 이전의 `token`은 임시 표시이고, `final.message`로 교체합니다.
 2. `offer == "food"`인 마지막 메시지 아래에 안내 문구와 폼을 보여주고, 제출하면 `food_request`를 포함해 `POST /api/chat`을 호출합니다. "다음에"는 `offer/dismiss`를 호출합니다.
 3. `offer == "draft"`인 마지막 메시지 아래에는 `✅ 초안 작성하기`(= 메시지 `"네, 작성해 주세요"`)와 `다음에`(= `"아니요, 괜찮아요"`) 버튼을 보여줍니다.
-   - `offer == "plan"`: 조건 요약 아래에 `계획 작성하기`(= `"네, 이 조건으로 계획을 작성해 주세요"`)와 `조건 수정`(= `"조건을 수정할게요"`) 버튼을 보여줍니다. 계획 작성 요청을 받으면 서버가 필수 조건(목적지·출발일·박수·성인 인원·숙소 필요 여부)이 모일 때까지 되묻고, 모이면 요약과 함께 이 제안을 보냅니다. 동의하면 장소·날씨·숙소를 조회해 텍스트 계획을 보냅니다(이 실행만 `trace.tool_limit`이 7, `model_limit`이 9).
+   - `offer == "plan"`: 조건 요약 아래에 `계획 작성하기`(= `"네, 이 조건으로 계획을 작성해 주세요"`)와 `조건 수정`(= `"조건을 수정할게요"`) 버튼을 보여줍니다. 계획 작성 요청을 받으면 서버가 필수 조건(목적지·출발일·박수·성인 인원·숙소 필요 여부)이 모일 때까지 되묻고, 모이면 요약과 함께 이 제안을 보냅니다. 동의하면 장소·날씨·숙소를 조회해 텍스트 계획을 보냅니다(이 실행만 `trace.tool_limit`이 9, `model_limit`이 11).
 4. 지도는 **가장 최근의 초안 / 맛집 추천 메시지에만** 그립니다.
 5. 429는 `retry_after`초 뒤 다시 시도하라고 안내합니다.
 6. 영업시간·평점·가격은 이 API가 제공하지 않으므로 화면에서 지어내지 않습니다.
