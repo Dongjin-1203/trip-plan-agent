@@ -73,6 +73,17 @@ class FakeAsk:
 
 
 @pytest.fixture(autouse=True)
+def frozen_rate_window(monkeypatch):
+    """요청 제한은 고정 시간 창(분·일)으로 센다. 테스트 도중 분 경계를 넘으면 카운터가 갈라져 결과가 흔들리므로 창의 한가운데로 시간을 고정한다."""
+    from types import SimpleNamespace
+
+    from api import ratelimit
+
+    monkeypatch.setattr(ratelimit, "time", SimpleNamespace(time=lambda: 1_800_000_030.0))  # 60초·86400초 창 모두의 안쪽
+    yield
+
+
+@pytest.fixture(autouse=True)
 def fresh_db():
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
