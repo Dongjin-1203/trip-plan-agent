@@ -16,11 +16,18 @@ const TOOL_LABEL: Record<string, string> = {
   draft_travel_plan: "여행 초안 작성",
   nearby_restaurants: "근처 맛집 검색",
   find_stays: "숙소 조회",
+  save_trip_info: "여행 조건 정리",
+  confirm_trip_plan: "계획 작성 시작",
 };
 
 const ARG_LABEL: Record<string, string> = {
   region: "지역",
   keyword: "지역",
+  destination: "목적지",
+  nights: "박수",
+  need_stay: "숙소 필요",
+  budget: "예산",
+  style: "취향",
   check_in: "체크인",
   check_out: "체크아웃",
   adults: "성인",

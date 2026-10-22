@@ -144,7 +144,7 @@ def flush_traces() -> None:
         logger.warning("langsmith flush failed")
 
 
-def _chat_stream(session_id: str, client_id: str, question: str, food_request: dict | None, retry: bool):
+def _chat_stream(session_id: str, client_id: str, question: str, food_request: dict | None, retry: bool, regenerate: bool = False):
     """한 턴을 처리하며 SSE 이벤트를 내보낸다. 성공·실패 모두 대화를 저장한다(실패하면 '다시 시도'로 이어 간다)."""
     db = SessionLocal()
     try:
@@ -152,6 +152,8 @@ def _chat_stream(session_id: str, client_id: str, question: str, food_request: d
         yield _sse("session", {"id": session.id, "title": session.title})
         if retry:
             store.drop_trailing_error(db, session)
+        elif regenerate:
+            store.drop_last_turn(db, session)
 
         messages = store.load_messages(db, session.id)
         history = [m for m in messages if not m.get("error")]  # 실패한 턴은 모델 기억에 넣지 않는다
@@ -211,13 +213,18 @@ def chat(req: ChatRequest, request: Request, client_id: str = Depends(get_client
             )
         if req.session_id:
             session = _own_session_or_404(db, client_id, req.session_id)
+            if req.regenerate:
+                stored = store.last_turn_question(db, session)
+                if stored is None:
+                    raise HTTPException(409, "다시 생성할 답변이 없어요.")
+                req.message = stored  # 저장된 질문으로 다시 처리한다(클라이언트가 보낸 문장은 쓰지 않는다)
         else:
             session = store.create_session(db, client_id, req.message)
         session_id = session.id
 
     food_request = req.food_request.to_dict() if req.food_request else None
     return StreamingResponse(
-        _chat_stream(session_id, client_id, req.message, food_request, req.retry),
+        _chat_stream(session_id, client_id, req.message, food_request, req.retry, req.regenerate),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         background=BackgroundTask(flush_traces),

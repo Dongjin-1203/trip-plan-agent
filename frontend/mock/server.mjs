@@ -1,7 +1,7 @@
 // docs/API.md 를 따르는 개발용 목(mock) 백엔드. 실제 모델·DB 없이 화면 흐름을 확인한다.
 //   node mock/server.mjs   (PORT 기본 8000)
 // 시나리오 키워드: "날씨" → 날씨 답변 + 초안 제안 / "네, 작성해" → 초안 + 맛집 폼 제안 /
-//   food_request → 일자별 맛집 / "오류" → 첫 시도 실패, retry:true 면 성공 / "429" → 요청 제한
+//   food_request → 일자별 맛집 / "오류" → 첫 시도 실패, retry:true 면 성공 / "429" → 요청 제한 / "계획 짜줘" → 조건 질문, "조건 입력 완료" → 요약+동의(plan) / regenerate:true → 마지막 쌍 교체
 import http from "node:http";
 import crypto from "node:crypto";
 
@@ -32,6 +32,30 @@ function trace(steps) {
 
 function build(body) {
   const q = body.message;
+  if (q.includes("조건을 수정할게요")) {
+    return { content: "어떤 조건을 바꿀까요? (목적지, 출발일, 박수, 인원, 숙소 여부)", question: q, trace: null, offer: false, draft: null, food: null, error: false };
+  }
+  if (q.includes("이 조건으로 계획")) {
+    return {
+      content: "## 여행 개요\n- 경주 2박 3일 · 성인 2명\n\n## 일정\n### 1일차 - 역사 산책\n- 오전: **국립경주박물관**\n- 오후: **첨성대**\n\n## 예상 비용\n- 숙박은 조회 시점 기준이며 변동될 수 있어요.\n\n수정하고 싶은 일차를 알려 주세요.",
+      question: q, offer: false, draft: null, food: null, error: false,
+      trace: trace([{ step: 1, tool: "confirm_trip_plan", args: {}, status: "success", note: "사용자 동의 확인" }, { step: 2, tool: "search_places", args: { region: "경주", category: "관광지" }, status: "success", note: "첫 검색", count: 3, places: PLACES.slice(0, 3) }]),
+    };
+  }
+  if (q.includes("조건 입력 완료")) {
+    return {
+      content: "**여행 조건을 정리했어요**\n- 목적지: 경주\n- 일정: 2026-11-14 ~ 2026-11-16 (2박 3일)\n- 인원: 성인 2명\n- 숙소 조회: 필요\n\n이 조건으로 **여행 계획을 작성**할까요? 바꿀 내용이 있으면 말씀해 주세요.",
+      question: q, offer: "plan", draft: null, food: null, error: false,
+      trace: trace([{ step: 1, tool: "save_trip_info", args: { destination: "경주", start_date: "2026-11-14", nights: 2, adults: 2, need_stay: true }, status: "success", note: "여행 조건 저장 — 필수 항목 모두 수집" }]),
+    };
+  }
+  if (q.includes("계획") && (q.includes("짜줘") || q.includes("세워"))) {
+    return {
+      content: "계획을 세우려면 몇 가지만 알려 주세요.\n1. 목적지\n2. 출발일과 몇 박인지\n3. 성인 인원\n4. 숙소 조회가 필요한지\n\n(선택) 아동 동반, 예산, 취향도 알려 주시면 반영할게요. 모두 정하셨으면 '조건 입력 완료'라고 말씀해 주세요.",
+      question: q, offer: false, draft: null, food: null, error: false,
+      trace: trace([{ step: 1, tool: "save_trip_info", args: {}, status: "success", note: "여행 조건 저장 — 빠진 항목: 목적지, 출발일, 몇 박인지, 성인 인원, 숙소 조회가 필요한지" }]),
+    };
+  }
   if (body.food_request) {
     const r = body.food_request;
     const days = [];
@@ -92,7 +116,7 @@ function sse(res, event, data) {
 }
 
 async function chat(req, res, cid, body) {
-  const msg = body?.message;
+  let msg = body?.message;
   if (typeof msg !== "string" || !msg.trim() || msg.length > 500) return send(res, 422, { detail: "메시지는 1~500자여야 해요." });
   if (msg.includes("429")) return send(res, 429, { detail: "요청이 너무 많아요.", retry_after: 7 }, { "retry-after": "7" });
 
@@ -102,6 +126,14 @@ async function chat(req, res, cid, body) {
   if (!s) {
     s = { id: crypto.randomBytes(6).toString("hex"), title: msg.slice(0, 30), updated_at: now(), messages: [] };
     sessions.set(s.id, s);
+  }
+  if (body.regenerate) {
+    if (!body.session_id || body.retry) return send(res, 422, { detail: "regenerate는 기존 대화에서 retry 없이만 쓸 수 있어요." });
+    const [u, a] = s.messages.slice(-2);
+    if (u?.role !== "user" || a?.role !== "assistant" || u.error || a.error) return send(res, 409, { detail: "다시 생성할 답변이 없어요." });
+    s.messages.splice(-2, 2);
+    msg = u.content;
+    body = { ...body, message: msg };
   }
   if (body.retry) {
     const l = s.messages.at(-1);

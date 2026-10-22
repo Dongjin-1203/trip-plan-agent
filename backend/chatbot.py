@@ -6,11 +6,13 @@ from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langsmith import traceable
 
-from config import AUTH_ERROR_ANSWER, MAX_HISTORY_MESSAGES, MAX_MODEL_CALLS, MAX_TOOL_CALLS, SYSTEM_PROMPT, get_api_key, get_model_name, missing_setting_message
+from config import AUTH_ERROR_ANSWER, MAX_HISTORY_MESSAGES, MAX_MODEL_CALLS, MAX_TOOL_CALLS, PLAN_MODEL_CALLS, PLAN_TOOL_CALLS, SYSTEM_PROMPT, get_api_key, get_model_name, missing_setting_message
 from meals import food_text, plan_food
 from plan import FOOD_OFFER_TEXT, OFFER_TEXT, draft_from_facts, merge_lookup, offer_ready
 from run_trace import build_trace
 from stays import StaySearchError, find_stays
+import trip_plan
+from trip_plan import confirm_trip_plan, save_trip_info
 from tools import PlaceAuthError, PlaceSearchError, get_weather, search_places
 from weather import now_kst, weekday_name
 
@@ -32,6 +34,11 @@ OFFER_NOTES = {
     "draft": (
         "직전에 사용자에게 '여행 계획 초안을 작성할까요?'라고 물었다. 사용자가 동의하면(예, 응, 좋아, 작성해줘 등) "
         "draft_travel_plan 도구를 호출한다. 동의하지 않거나 다른 요청이면 호출하지 말고 일반 규칙대로 답한다."
+    ),
+    "plan": (
+        "직전에 사용자에게 여행 조건 요약을 보여 주고 '이 조건으로 여행 계획을 작성할까요?'라고 물었다. "
+        "사용자가 동의하면(예, 응, 좋아, 작성해줘 등) confirm_trip_plan 도구를 호출한다. "
+        "조건을 바꾸자는 말이면 save_trip_info로 바뀐 항목만 저장한다. 동의도 수정도 아니면 일반 규칙대로 답한다."
     ),
     "food": (
         "직전에 사용자에게 '근처 맛집도 추천할까요?'라고 물었고, 화면에는 여행 정보 입력 폼(시작일·여행 일수·출발시간·귀가시간)이 있다. "
@@ -100,8 +107,58 @@ def _run_tool(call: dict, done: set) -> tuple[ToolMessage, dict]:
     return ToolMessage(content=content, tool_call_id=call["id"]), log
 
 
+def _limits(facts: dict) -> tuple[int, int]:
+    """(도구 호출 한도, 모델 호출 한도). 여행 계획을 작성하는 중에는 한도를 넓힌다."""
+    if (facts.get("trip") or {}).get("stage") == "compose":
+        return PLAN_TOOL_CALLS, PLAN_MODEL_CALLS
+    return MAX_TOOL_CALLS, MAX_MODEL_CALLS
+
+
+def _run_trip_tool(call: dict, facts: dict) -> tuple[ToolMessage, dict, dict]:
+    """여행 계획 수립 도구(조건 저장·동의 확인)를 대화 상태(facts)에 반영한다. 반환: (모델에 돌려줄 메시지, 실행 기록, 새 facts)."""
+    args = call["args"]
+    if call["name"] == confirm_trip_plan.name:
+        trip = facts.get("trip")
+        if not trip_plan.complete(trip) or trip.get("stage") != "confirm":
+            log = {"tool": call["name"], "args": args, "status": "error"}
+            return ToolMessage(content="도구 오류: 작성 동의를 받을 조건이 아직 준비되지 않았습니다.", tool_call_id=call["id"]), log, facts
+        trip = {**trip, "stage": "compose"}
+        stay = (
+            f"3) find_stays(keyword={trip['destination']}, check_in={trip['start_date']}, check_out={trip_plan.check_out(trip)}, "
+            f"adults={trip['adults']}, children={trip.get('children', 0)}, domestic는 국내면 true) — 숙소 조회가 필요하므로 호출한다."
+            if trip["need_stay"] else "3) 숙소 조회는 필요 없다고 했으므로 find_stays를 호출하지 않는다."
+        )
+        guide = (
+            "동의를 받았다. 이제 아래 순서로 조회한 뒤 조회한 값만 근거로 '출력 형식'에 맞춰 여행 계획을 텍스트로 쓴다. "
+            f"1) search_places(region={trip['destination']}, category=관광지 등 필요한 종류)로 갈 만한 장소를 찾는다. "
+            f"2) get_weather(region={trip['destination']}, date={trip['start_date']})로 날씨를 확인한다. {stay} "
+            "예보 범위 밖이거나 도구 오류가 있으면 그 사실을 밝히고 해당 부분은 '확인 필요'로 적는다."
+        )
+        content = json.dumps({"확정된 조건": trip_plan.public(trip), "안내": guide}, ensure_ascii=False)
+        return ToolMessage(content=content, tool_call_id=call["id"]), {"tool": call["name"], "args": args, "status": "success"}, {**facts, "trip": trip}
+
+    trip, errors = trip_plan.update(facts.get("trip"), args)
+    lacking = trip_plan.missing(trip)
+    saved = {k: v for k, v in args.items() if v is not None}
+    log = {"tool": call["name"], "args": saved, "status": "error" if errors else "success", "missing": lacking}
+    if lacking:
+        hint = "일정을 쓰지 말고 '빠진 항목'만 한 메시지에 모아 짧게 묻는다. 아동 동반·예산·취향은 선택이라 함께 물어봐도 된다."
+    elif trip["stage"] == "intake":
+        hint = "필수 항목이 모두 모였다. 아무것도 쓰지 말고 끝낸다. 시스템이 조건 요약과 작성 동의 질문을 보여준다."
+    else:
+        hint = "바뀐 조건이 없다."
+    content = json.dumps(
+        {"저장된 조건": trip_plan.public(trip), "빠진 항목": lacking, "오류": errors, "안내": hint}, ensure_ascii=False,
+    )
+    return ToolMessage(content=content, tool_call_id=call["id"]), log, {**facts, "trip": trip}
+
+
 def _describe(call: dict) -> str:
     args = call["args"]
+    if call["name"] == save_trip_info.name:
+        return f"📝 여행 정보 정리 중: {args.get('destination') or ''}".strip()
+    if call["name"] == confirm_trip_plan.name:
+        return "🧭 여행 계획 작성 준비 중"
     if call["name"] == "get_weather":
         return f"🌤️ 날씨 조회 중: {args.get('region', '')} {args.get('date', '')}".strip()
     if call["name"] == "find_stays":
@@ -186,6 +243,10 @@ def ask_events(question: str, history: list[dict] | None = None, facts: dict | N
     llm = ChatOpenAI(model=get_model_name(), api_key=api_key, timeout=60, max_retries=1)
     # 초안 도구는 제안이 대기 중일 때만 모델에게 보여준다.
     tools = list(TOOLS.values()) + ([DRAFT_TOOL] if kind == "draft" and facts else [])
+    if facts is not None:  # 계획 수립 도구는 대화 상태를 가진 호출자(웹 화면)만 쓴다.
+        tools.append(save_trip_info)
+        if kind == "plan" and (facts.get("trip") or {}).get("stage") == "confirm":
+            tools.append(confirm_trip_plan)
     llm_with_tools = llm.bind_tools(tools)
     logs: list[dict] = []
     done: set = set()
@@ -221,7 +282,8 @@ def ask_events(question: str, history: list[dict] | None = None, facts: dict | N
         model_calls = 0
         while True:
             # 도구 한도나 모델 호출 한도에 닿으면 도구 없이 지금까지의 결과로 마무리한다.
-            last = model_calls >= MAX_MODEL_CALLS - 1 or len(logs) >= MAX_TOOL_CALLS
+            tool_cap, model_cap = _limits(facts)
+            last = model_calls >= model_cap - 1 or len(logs) >= tool_cap
             if last:
                 messages.append(SystemMessage(LIMIT_NOTICE))
             response = yield from _stream_model(llm if last else llm_with_tools, messages)
@@ -229,9 +291,12 @@ def ask_events(question: str, history: list[dict] | None = None, facts: dict | N
             if last or not response.tool_calls:
                 limit_hit = last and bool(logs)
                 answer = response.text
-                trace = build_trace(logs, model_calls, answer, limit_hit)
+                trace = build_trace(logs, model_calls, answer, limit_hit, tool_cap, model_cap)
+                composing = (facts.get("trip") or {}).get("stage") == "compose"
+                if composing:  # 계획을 작성한 실행이 끝났다. 조건이 바뀌기 전까지 다시 묻지 않는다.
+                    facts = {**facts, "trip": {**facts["trip"], "stage": "done"}}
                 # 장소와 날씨를 모두 조회했으면 초안 작성 여부를 한 번 묻는다(근거 검사는 답변 본문만 대상).
-                if track and new_lookup and offer_ready(facts):
+                if track and new_lookup and offer_ready(facts) and not composing:
                     offer = "draft"
                 elif kind == "food" and facts.get("draft_places"):
                     offer = "food"  # 맛집 입력 폼은 제출하거나 '다음에'를 누를 때까지 유지한다.
@@ -259,11 +324,18 @@ def ask_events(question: str, history: list[dict] | None = None, facts: dict | N
                 yield {"type": "final", "answer": answer, "trace": build_trace(logs, model_calls, draft["text"]), "facts": facts, "offer": offer, "draft": draft["view"]}
                 return
             for call in response.tool_calls:
-                if len(logs) >= MAX_TOOL_CALLS:
+                tool_cap, model_cap = _limits(facts)
+                if len(logs) >= tool_cap:
                     messages.append(ToolMessage(content="도구 오류: 호출 한도 도달", tool_call_id=call["id"]))
                     continue
                 desc = _describe(call)
                 yield {"type": "status", "label": desc, "line": desc}
+                if call["name"] in trip_plan.TRIP_TOOLS:
+                    tool_message, log, facts = _run_trip_tool(call, facts)
+                    messages.append(tool_message)
+                    logs.append(log)
+                    yield {"type": "status", "label": desc, "line": _result_line(log)}
+                    continue
                 tool_message, log = _run_tool(call, done)
                 messages.append(tool_message)
                 logs.append(log)
@@ -275,6 +347,14 @@ def ask_events(question: str, history: list[dict] | None = None, facts: dict | N
                     return
                 facts, changed = merge_lookup(facts, log)
                 new_lookup = new_lookup or changed
+            trip = facts.get("trip")
+            if trip and trip["stage"] == "intake" and trip_plan.complete(trip):
+                # 필수 조건이 모두 모였다. 모델에 맡기지 않고 요약과 동의 질문을 고정 문구로 보여 준다.
+                facts = {**facts, "trip": {**trip, "stage": "confirm"}}
+                text = trip_plan.summary(trip)
+                yield {"type": "token", "text": text}
+                yield {"type": "final", "answer": text, "trace": build_trace(logs, model_calls, text, False, *_limits(facts)), "facts": facts, "offer": "plan"}
+                return
     except openai.AuthenticationError:
         raise ChatbotError("API 키가 올바르지 않습니다. .env의 키를 확인해 주세요.") from None
     except openai.RateLimitError:

@@ -8,6 +8,23 @@ export function TrashIcon() {
   );
 }
 
+export function CopyIcon() {
+  return (
+    <svg {...base} width={16} height={16}>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15V6a2 2 0 0 1 2-2h9" />
+    </svg>
+  );
+}
+
+export function RefreshIcon() {
+  return (
+    <svg {...base} width={16} height={16}>
+      <path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" />
+    </svg>
+  );
+}
+
 export function LogoIcon() {
   return (
     <svg {...base} width={20} height={20}>

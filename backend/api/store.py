@@ -70,6 +70,33 @@ def drop_trailing_error(db: Session, session: ChatSession) -> bool:
     return False
 
 
+def _last_turn(db: Session, session: ChatSession) -> list[ChatMessage]:
+    """마지막으로 정상 저장된 질문·답변 쌍. 없으면 빈 목록."""
+    rows = _last_rows(db, session.id, 2)
+    ok = (
+        len(rows) == 2
+        and rows[0].payload.get("role") == "user" and rows[1].payload.get("role") == "assistant"
+        and not rows[0].payload.get("error") and not rows[1].payload.get("error")
+    )
+    return rows if ok else []
+
+
+def last_turn_question(db: Session, session: ChatSession) -> str | None:
+    """다시 생성할 수 있는 마지막 질문(없으면 None)."""
+    rows = _last_turn(db, session)
+    return rows[0].payload.get("content") if rows else None
+
+
+def drop_last_turn(db: Session, session: ChatSession) -> bool:
+    """마지막 질문·답변 쌍을 지운다(다시 생성하기 위해). 지웠으면 True."""
+    rows = _last_turn(db, session)
+    for r in rows:
+        db.delete(r)
+    if rows:
+        db.commit()
+    return bool(rows)
+
+
 def dismiss_offer(db: Session, session: ChatSession) -> bool:
     """마지막 어시스턴트 메시지의 제안(offer)을 닫는다. 닫을 것이 있었으면 True."""
     rows = _last_rows(db, session.id, 1)

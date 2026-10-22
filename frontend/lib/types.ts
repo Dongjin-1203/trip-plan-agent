@@ -89,7 +89,7 @@ export type AssistantMessage = {
   content: string;
   question?: string;
   trace?: Trace | null;
-  offer: false | "draft" | "food";
+  offer: false | "draft" | "food" | "plan";
   offer_defaults?: { start_date?: string } | null;
   draft: Draft | null;
   food: Food | null;

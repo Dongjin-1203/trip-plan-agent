@@ -21,7 +21,7 @@ const LAST_KEY = "travel-chat:last-session";
 const STARTERS = [
   { title: "장소 추천", prompt: "경주 실내 관광지 추천해줘" },
   { title: "날씨 확인", prompt: "이번 주 토요일 제주 날씨 알려줘" },
-  { title: "여행 일정 초안", prompt: "부산 가볼 만한 곳 추천해줘" },
+  { title: "여행 계획 세우기", prompt: "부산 여행 계획 짜줘" },
   { title: "일자별 맛집", prompt: "서울 성수동 맛집 알려줘" },
 ];
 const FOOD_MSG = /^맛집 추천: (\d{4}-\d{2}-\d{2})부터 (\d+)일 · 출발 (\d{2}:\d{2}) · 귀가 (\d{2}:\d{2})$/;
@@ -104,13 +104,13 @@ export default function Chat() {
     return { lastDraft: d, lastFood: f };
   }, [messages]);
 
-  async function send(message: string, opts: { food?: FoodRequest | null; retry?: boolean } = {}) {
+  async function send(message: string, opts: { food?: FoodRequest | null; retry?: boolean; regenerate?: boolean } = {}) {
     if (busy || !message.trim()) return;
     setNotice(null);
     setBusy(true);
     setDrawer(false);
 
-    const base = opts.retry ? messages.slice(0, -2) : messages;
+    const base = opts.retry || opts.regenerate ? messages.slice(0, -2) : messages;
     setMessages([...base, { role: "user", content: message }]);
     setLive({ text: "", label: "답변을 준비하고 있어요…", lines: [] });
 
@@ -122,6 +122,7 @@ export default function Chat() {
         message,
         food_request: opts.food ?? null,
         retry: !!opts.retry,
+        regenerate: !!opts.regenerate,
       })) {
         if (ev.type === "session") {
           sid = ev.id;
@@ -163,8 +164,17 @@ export default function Chat() {
       }
       if (!ended) throw new ApiError(0, "연결이 끊겨 이번 답변이 저장되지 않았어요. 다시 보내 주세요.");
     } catch (e) {
-      // 서버에 저장되지 않은 턴은 화면에서도 되돌린다.
-      setMessages(base);
+      // 서버에 저장되지 않은 턴은 화면에서도 되돌린다. 다시 생성은 서버가 이전 답변을 지웠을 수 있어 서버 상태를 다시 읽는다.
+      let restored = false;
+      if (opts.regenerate && sid) {
+        try {
+          setMessages((await getSession(sid)).messages);
+          restored = true;
+        } catch {
+          /* 아래에서 화면 기준으로 되돌린다 */
+        }
+      }
+      if (!restored) setMessages(base);
       if (!opts.retry && !activeId && sid) {
         setActiveId(null);
         remember(null);
@@ -243,6 +253,13 @@ export default function Chat() {
     if (q) send(q, { retry: true, food: foodFromText(q) });
   }
 
+  function regenerateLast() {
+    const prev = messages[messages.length - 2];
+    const last = messages[messages.length - 1];
+    if (last?.role !== "assistant" || last.error || prev?.role !== "user") return;
+    send(prev.content, { regenerate: true, food: foodFromText(prev.content) });
+  }
+
   const last = messages[messages.length - 1];
   const lastBot = last?.role === "assistant" ? last : null;
   const idle = !busy && !live;
@@ -287,7 +304,13 @@ export default function Chat() {
             )}
 
             {messages.map((m, i) => (
-              <MessageView key={i} msg={m} mapDraft={i === lastDraft} mapFood={i === lastFood} />
+              <MessageView
+                key={i}
+                msg={m}
+                mapDraft={i === lastDraft}
+                mapFood={i === lastFood}
+                onRegenerate={i === messages.length - 1 && !busy && !live ? regenerateLast : undefined}
+              />
             ))}
 
             {live && (
@@ -328,6 +351,17 @@ export default function Chat() {
             )}
 
             {idle && lastBot && !lastBot.error && <Suggestions items={chips} onPick={(t) => send(t)} />}
+
+            {idle && lastBot && !lastBot.error && lastBot.offer === "plan" && (
+              <div className="row-bot offer-row">
+                <button className="btn btn-primary" onClick={() => send("네, 이 조건으로 계획을 작성해 주세요")}>
+                  계획 작성하기
+                </button>
+                <button className="btn btn-secondary" onClick={() => send("조건을 수정할게요")}>
+                  조건 수정
+                </button>
+              </div>
+            )}
 
             {idle && lastBot && !lastBot.error && lastBot.offer === "draft" && (
               <div className="row-bot offer-row">

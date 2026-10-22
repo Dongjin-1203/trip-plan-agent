@@ -73,6 +73,7 @@ export type ChatBody = {
   message: string;
   food_request?: FoodRequest | null;
   retry?: boolean;
+  regenerate?: boolean;
 };
 
 function parseBlock(block: string): ChatEvent | null {

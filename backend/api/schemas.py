@@ -1,7 +1,7 @@
 """요청 본문 검증 (docs/API.md의 POST /api/chat)."""
 from datetime import date
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from api import settings
 from meals import MAX_DAYS
@@ -27,6 +27,13 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=settings.MAX_MESSAGE_CHARS)
     food_request: FoodRequest | None = None
     retry: bool = False
+    regenerate: bool = False
+
+    @model_validator(mode="after")
+    def regenerate_rules(self):
+        if self.regenerate and (self.retry or not self.session_id):
+            raise ValueError("regenerate는 기존 대화에서 retry 없이만 쓸 수 있습니다.")
+        return self
 
     @field_validator("message")
     @classmethod

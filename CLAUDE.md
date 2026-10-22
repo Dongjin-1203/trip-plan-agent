@@ -39,6 +39,8 @@ npm run build                  # 타입 검사 포함. 별도 lint/test 스크�
   - `offer == "draft"`일 때만 `draft_travel_plan` 도구를 모델에 노출하고, 실제 초안은 코드(`plan.draft_from_facts`)가 만든다.
   - 맛집 추천은 모델 도구가 아니다. 화면 폼의 `food_request`를 받아 `meals.plan_food`가 끼니를 계산하고 반경 검색한다.
   - 숙소 조회는 `stays.py`의 서브에이전트다. 모델 없이 코드로 검증 → 마이리얼트립 MCP(`searchStays`, `requests`로 JSON-RPC 직접 호출, 인증 없음) → 정규화를 하고, 메인 에이전트에는 `find_stays` 도구 하나로 노출된다. 결과는 trace 단계의 `stays`에 담겨 화면의 `StayCards`가 그린다. 예약 링크는 gid로 만들며(검색 결과에는 링크가 없다) 예약·결제는 하지 않는다.
+  - 여행 계획 수립(`trip_plan.py`): 모델이 `save_trip_info` 도구로 조건을 넘기면 코드가 `facts["trip"]`에 누적하고 빠진 필수 항목(목적지·출발일·박수·성인 수·숙소 필요 여부)을 판단한다. 단계는 `intake → confirm → compose → done`이며 조건이 바뀌면 intake로 돌아간다. 필수 항목이 모이면 `ask_events`가 모델 없이 요약과 동의 질문을 고정 문구로 내보내고(`offer: "plan"`), 동의 후 `confirm_trip_plan`을 부르면 compose 단계에서 장소·날씨·숙소를 조회해 텍스트 계획을 쓴다. compose 중에는 도구/모델 호출 한도가 7/9로 넓어지고(`config.PLAN_*`) 초안 카드 제안은 하지 않는다. 기존 초안 카드·맛집 흐름은 별개로 유지된다.
+  - 다시 생성: `POST /api/chat`의 `regenerate:true`는 마지막 정상 질문·답변 쌍을 지우고 **저장된 질문**으로 다시 처리한다(`store.drop_last_turn`). `retry`는 실패한 쌍 전용이다.
   - `run_trace.build_trace`가 화면의 실행 기록(TracePanel)용 trace를 만든다. `ChatbotError` 메시지만 사용자에게 그대로 보이고, 그 외 예외는 고정 문구로 바꾼다.
 - **도메인 모듈**(chatbot, tools, weather, plan, meals, run_trace, config)은 Streamlit 버전에서 가져온 것으로, `api/`가 HTTP·DB 계층이다(`db` 모델, `store` CRUD, `ratelimit`은 DB 카운터 기반, `serialize.public_message`가 내부 필드를 걸러 응답을 만든다).
 - **테스트**: `tests/conftest.py`가 임시 SQLite와 트레이싱 끄기를 설정하고, `fake_ask` 픽스처가 `main.ask_events`를 `FakeAsk`로 바꾼다. 모델·카카오 호출 없이 API 계층만 검사한다.
