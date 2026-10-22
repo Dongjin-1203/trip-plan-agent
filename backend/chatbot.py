@@ -10,10 +10,11 @@ from config import AUTH_ERROR_ANSWER, MAX_HISTORY_MESSAGES, MAX_MODEL_CALLS, MAX
 from meals import food_text, plan_food
 from plan import FOOD_OFFER_TEXT, OFFER_TEXT, draft_from_facts, merge_lookup, offer_ready
 from run_trace import build_trace
+from stays import StaySearchError, find_stays
 from tools import PlaceAuthError, PlaceSearchError, get_weather, search_places
 from weather import now_kst, weekday_name
 
-TOOLS = {t.name: t for t in (search_places, get_weather)}
+TOOLS = {t.name: t for t in (search_places, get_weather, find_stays)}
 
 
 @tool
@@ -68,7 +69,11 @@ def _run_tool(call: dict, done: set) -> tuple[ToolMessage, dict]:
         if tool is None:
             raise PlaceSearchError("알 수 없는 도구입니다.")
         result = tool.invoke(args)
-        if isinstance(result, dict):  # 날씨 도구: 상태·출처·조회 시각을 기록에 그대로 남긴다.
+        if call["name"] == "find_stays":  # 숙소 서브에이전트: 조회한 숙소와 출처·조회 시각을 기록에 남긴다.
+            log.update(source=result["source"], queried_at=result["queried_at"], count=len(result["stays"]), stays=result["stays"])
+            shown = [{k: v for k, v in st.items() if k != "image"} for st in result["stays"]]
+            content = json.dumps({"조회조건": result["params"], "숙소": shown}, ensure_ascii=False) if shown else "검색 결과 0건"
+        elif isinstance(result, dict):  # 날씨 도구: 상태·출처·조회 시각을 기록에 그대로 남긴다.
             log.update(status=result["status"], source=result["source"], queried_at=result["queried_at"], result=result)
             content = json.dumps(result, ensure_ascii=False)
         else:
@@ -80,6 +85,9 @@ def _run_tool(call: dict, done: set) -> tuple[ToolMessage, dict]:
             ]
             shown = [{k: r[k] for k in ("name", "address", "map_link")} for r in result]
             content = str(shown) if result else "검색 결과 0건"
+    except StaySearchError as e:
+        log["status"] = "error"
+        content = f"도구 오류: {e}"
     except PlaceAuthError:
         log["status"] = "auth_error"
         content = "도구 오류: 장소 검색 API 인증 실패"
@@ -96,6 +104,8 @@ def _describe(call: dict) -> str:
     args = call["args"]
     if call["name"] == "get_weather":
         return f"🌤️ 날씨 조회 중: {args.get('region', '')} {args.get('date', '')}".strip()
+    if call["name"] == "find_stays":
+        return f"🏨 숙소 조회 중: {args.get('keyword', '')} {args.get('check_in', '')}~{args.get('check_out', '')}".strip()
     return f"🔎 장소 검색 중: {args.get('region', '')} {args.get('category', '')}".strip()
 
 

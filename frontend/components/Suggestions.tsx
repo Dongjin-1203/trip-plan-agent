@@ -1,4 +1,4 @@
-import { placesFromMessage, regionOf } from "@/lib/places";
+import { placesFromMessage, regionOf, staysFromMessage } from "@/lib/places";
 import type { AssistantMessage } from "@/lib/types";
 
 // 응답에 쓰인 장소·지역으로 후속 질문을 만든다. 보낼 만한 문장이 없으면 빈 배열.
@@ -12,7 +12,8 @@ export function suggestionsFor(msg: AssistantMessage): string[] {
   if (places.length > 1) out.push("이 장소들로 1일 일정 짜줘");
   if (region && !tools.has("get_weather")) out.push(`${region} 날씨 알려줘`);
   if (region && !tools.has("search_places")) out.push(`${region} 가볼 만한 곳 추천해줘`);
-  if (region && places.length > 0) out.push(`${region} 숙소도 추천해줘`);
+  if (region && places.length > 0 && !tools.has("find_stays")) out.push(`${region} 숙소도 추천해줘`);
+  if (region && staysFromMessage(msg).length > 0 && !tools.has("search_places")) out.push(`${region} 근처 맛집 알려줘`);
   return out.slice(0, 4);
 }
 

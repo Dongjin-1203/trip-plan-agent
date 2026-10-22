@@ -61,6 +61,18 @@ function build(body) {
   if (q.includes("아니요")) {
     return { content: "알겠어요. 더 필요하면 말씀해 주세요.", question: q, trace: null, offer: false, draft: null, food: null, error: false };
   }
+  if (q.includes("숙소")) {
+    const link = (id) => `https://accommodation.myrealtrip.com/union/products/${id}?checkIn=2026-11-14&checkOut=2026-11-16&adultCount=2&childCount=0`;
+    const stays = [
+      { gid: 101, name: "경주 해변 호텔", description: "4성급 · 호텔 · 경주", price: "150,000원/박", price_with_tax: "세금포함 165,000원/박", rating: 4.5, review_count: "1,234", tags: ["무료취소", "세일페스타"], image: "", booking_link: link(101) },
+      { gid: 102, name: "보문 리조트", description: "5성급 · 리조트 · 경주", price: "", price_with_tax: "", rating: 4.2, review_count: "880", tags: [], image: "", booking_link: link(102) },
+    ];
+    return {
+      content: "경주 숙소를 찾았어요. 가격은 조회 시점 기준이라 바뀔 수 있어요.\n\n1. **경주 해변 호텔** 150,000원/박\n2. **보문 리조트**\n\n최종 가격은 예약 페이지에서 확인해 주세요.",
+      question: q, offer: false, draft: null, food: null, error: false,
+      trace: trace([{ step: 1, tool: "find_stays", args: { keyword: "경주", check_in: "2026-11-14", check_out: "2026-11-16", adults: 2, children: 0, domestic: true }, status: "success", note: "숙소 조회", count: 2, source: "마이리얼트립 MCP (searchStays)", queried_at: "2026-10-22T14:00:00+09:00", stays }]),
+    };
+  }
   if (q.includes("날씨")) {
     return {
       content: "**경주**의 3일 뒤(10/25, 일) 예보입니다. 최고 19.4°C, 최저 16.0°C, 강수확률 92%예요.\n\n이 조건으로 여행 계획 초안을 만들어 드릴까요?",

@@ -14,10 +14,12 @@ END_LABELS = {
     "draft": "사용자 동의 후 여행 계획 초안을 작성했다(검사 통과 결과만 근거)",
     "food": "입력한 기간·출발시간으로 끼니를 계산해 초안 장소 주변 반경 검색으로 맛집을 추천했다(조회 결과만 근거)",
     "weather": "날씨 조회 후 답했다",
+    "stays": "숙소 조회 후 답했다(마이리얼트립 조회 결과만 근거)",
     "weather_none": "날씨 값을 쓸 수 없어 예보 없음·확인 필요로 답했다",
 }
 
 _LINK_ID = re.compile(r"place\.map\.kakao\.com/(\d+)")
+_STAY_ID = re.compile(r"accommodation\.myrealtrip\.com/union/products/(\d+)")
 
 
 def _step_note(prev: dict | None, log: dict) -> str:
@@ -29,6 +31,8 @@ def _step_note(prev: dict | None, log: dict) -> str:
     if log["tool"] == "nearby_restaurants":
         a = log["args"]
         return f"여행 {a.get('days', '?')}일 · 끼니 {a.get('meals', '?')}끼 · 기준 장소별 반경 검색(끼니마다 1곳 추천)"
+    if log["tool"] == "find_stays":
+        return "숙소 조회 — 마이리얼트립 검색 결과(가격·예약 링크는 변동될 수 있음)" if log["status"] == "success" else f"숙소 조회 결과 {log['status']}"
     if log["tool"] == "get_weather":
         return {"ok": "날씨 조회", "out_of_range": "예보 범위 밖이라 API를 부르지 않음"}.get(log["status"], f"날씨 조회 결과 {log['status']}")
     if prev is None:
@@ -50,6 +54,8 @@ def _end_reason(logs: list[dict], limit_hit: bool) -> str:
         return "auth_error"
     if limit_hit:
         return "limit"
+    if logs[-1]["tool"] == "find_stays" and logs[-1]["status"] == "success" and logs[-1].get("count"):
+        return "stays"
     if logs[-1]["tool"] == "get_weather":
         return "weather" if logs[-1]["status"] == "ok" else "weather_none"
     count = logs[-1].get("count", 0)
@@ -61,6 +67,9 @@ def _end_reason(logs: list[dict], limit_hit: bool) -> str:
 def _grounded(answer: str, logs: list[dict]) -> bool:
     """답변의 장소 링크가 마지막 도구 결과에 있는 장소인지 확인한다.
     서로 다른 지역을 검색한 실행(일정 등)은 지역별 마지막 결과를 모두 근거로 인정한다."""
+    used_stays = set(_STAY_ID.findall(answer))
+    if used_stays and not used_stays <= {str(st["gid"]) for l in logs if l["tool"] == "find_stays" for st in l.get("stays", [])}:
+        return False
     used = set(_LINK_ID.findall(answer))
     ok = [l for l in logs if l["status"] == "success" or l["tool"] in ("draft_travel_plan", "nearby_restaurants")]
     if not used:

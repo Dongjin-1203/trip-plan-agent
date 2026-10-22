@@ -125,6 +125,14 @@ DB 연결까지 확인. 실패 시 503.
   "end": "날씨 조회 후 답했다", "grounded": true
 }
 ```
+숙소 조회 단계(`tool: "find_stays"`)는 `args`(`keyword`, `check_in`, `check_out`, `adults`, `children`, `domestic`), `source`, `queried_at`, `count`와 함께 `stays`를 가집니다. `price`·`price_with_tax`는 조회 시점의 안내 문구(예: `"150,000원/박"`)이며 비어 있을 수 있고, `booking_link`는 마이리얼트립 예약 페이지입니다(예약·결제는 하지 않음). `image`는 https 주소이거나 빈 문자열입니다.
+```json
+{"step": 1, "tool": "find_stays", "args": {"keyword": "제주", "check_in": "2026-11-14", "check_out": "2026-11-16", "adults": 2, "children": 0, "domestic": true},
+ "status": "success", "note": "숙소 조회 — …", "count": 2, "source": "마이리얼트립 MCP (searchStays)", "queried_at": "2026-10-22T14:00:00+09:00",
+ "stays": [{"gid": 2680814, "name": "…", "description": "4성급 · 리조트 · 평창", "price": "150,000원/박", "price_with_tax": "세금포함 165,000원/박",
+            "rating": 4.2, "review_count": "2,775", "tags": ["무료취소"], "image": "https://…", "booking_link": "https://accommodation.myrealtrip.com/union/products/2680814?checkIn=…"}]}
+```
+
 `status` 값 예: `success`, `ok`, `error`, `auth_error`, `skipped`, `out_of_range`, `partial`. `grounded: false`면 "답변과 조회 결과가 일치하지 않음" 경고를 보여줍니다. 도구마다 추가 필드(`warnings`, `checks` 등)가 있을 수 있으므로 **모르는 필드는 무시**합니다.
 
 #### Draft (여행 계획 초안)

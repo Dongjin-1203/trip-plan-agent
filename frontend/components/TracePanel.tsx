@@ -15,10 +15,17 @@ const TOOL_LABEL: Record<string, string> = {
   get_weather: "날씨 조회",
   draft_travel_plan: "여행 초안 작성",
   nearby_restaurants: "근처 맛집 검색",
+  find_stays: "숙소 조회",
 };
 
 const ARG_LABEL: Record<string, string> = {
   region: "지역",
+  keyword: "지역",
+  check_in: "체크인",
+  check_out: "체크아웃",
+  adults: "성인",
+  children: "아동",
+  domestic: "국내",
   category: "종류",
   date: "날짜",
   start_date: "시작일",

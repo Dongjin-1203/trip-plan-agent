@@ -3,6 +3,19 @@ export type SessionSummary = { id: string; title: string; updated_at: string };
 
 export type TracePlace = { name: string; address?: string; map_link?: string };
 
+export type TraceStay = {
+  gid: number;
+  name: string;
+  description?: string;
+  price?: string;
+  price_with_tax?: string;
+  rating?: number | null;
+  review_count?: string;
+  tags?: string[];
+  image?: string;
+  booking_link: string;
+};
+
 export type TraceStep = {
   step: number;
   tool: string;
@@ -11,6 +24,7 @@ export type TraceStep = {
   note?: string;
   count?: number;
   places?: TracePlace[];
+  stays?: TraceStay[];
   source?: string;
   queried_at?: string;
   result?: Record<string, unknown>;
